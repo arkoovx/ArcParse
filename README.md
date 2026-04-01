@@ -6,19 +6,13 @@
 
 ## Готовые протестированные подписки
 
-Ниже — файлы, которые обновляются GitHub Actions автоматически раз в 24 часа:
+Ниже — raw-ссылки вашего форка (обновляются GitHub Actions автоматически раз в 24 часа):
 
-- **Base VPN**: [`results/top_vpn.txt`](results/top_vpn.txt)
-- **Bypass VPN**: [`results/top_bypass.txt`](results/top_bypass.txt)
-- **Telegram MTProto**: [`results/top_MTProto.txt`](results/top_MTProto.txt)
+- **Base VPN**: [https://raw.githubusercontent.com/<username>/<repo>/<branch>/results/top_vpn.txt](https://raw.githubusercontent.com/<username>/<repo>/<branch>/results/top_vpn.txt)
+- **Bypass VPN**: [https://raw.githubusercontent.com/<username>/<repo>/<branch>/results/top_bypass.txt](https://raw.githubusercontent.com/<username>/<repo>/<branch>/results/top_bypass.txt)
+- **Telegram MTProto**: [https://raw.githubusercontent.com/<username>/<repo>/<branch>/results/top_MTProto.txt](https://raw.githubusercontent.com/<username>/<repo>/<branch>/results/top_MTProto.txt)
 
-Если нужен прямой subscription-URL для клиента, используйте raw-ссылку вашего форка:
-
-```text
-https://raw.githubusercontent.com/<username>/<repo>/<branch>/results/top_vpn.txt
-https://raw.githubusercontent.com/<username>/<repo>/<branch>/results/top_bypass.txt
-https://raw.githubusercontent.com/<username>/<repo>/<branch>/results/top_MTProto.txt
-```
+Замените `<username>`, `<repo>` и `<branch>` на данные вашего форка.
 
 ---
 
