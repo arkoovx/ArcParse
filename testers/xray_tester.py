@@ -269,6 +269,16 @@ class XrayTester:
             f"⏳ Запускаю тестирование Xray: всего {total_count} конфигов, "
             f"параллельность {concurrency}, таймаут {timeout:.1f}с"
         )
+        # Слишком высокая параллельность для запуска отдельных процессов Xray
+        # обычно замедляет работу из-за конкуренции за CPU/диск и контекст-переключений.
+        cpu_count = os.cpu_count() or 4
+        safe_limit = max(20, min(80, cpu_count * 4))
+        effective_concurrency = min(concurrency, safe_limit)
+        if effective_concurrency != concurrency:
+            log(
+                f"⚙️ Ограничиваю параллельность Xray до {effective_concurrency} "
+                f"(запрошено {concurrency}) для стабильной скорости"
+            )
 
         def test_with_progress(url: str) -> Optional[Tuple[str, float]]:
             nonlocal tested_count
@@ -298,7 +308,7 @@ class XrayTester:
             return None
 
         # Тестируем параллельно
-        with concurrent.futures.ThreadPoolExecutor(max_workers=concurrency) as executor:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=effective_concurrency) as executor:
             futures = {executor.submit(test_with_progress, url): url for url in urls}
 
             for future in concurrent.futures.as_completed(futures):

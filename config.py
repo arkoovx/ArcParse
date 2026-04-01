@@ -22,7 +22,7 @@ TASKS = [
         "out_file": os.path.join(RESULTS_DIR, "top_vpn.txt"),
         "type": "xray",
         "target_url": "https://google.com",
-        "max_ping_ms": 900,
+        "max_ping_ms": 9000,
         "required_count": 10,
     },
     {
@@ -32,7 +32,7 @@ TASKS = [
         "out_file": os.path.join(RESULTS_DIR, "top_bypass.txt"),
         "type": "xray",
         "target_url": "https://youtube.com",
-        "max_ping_ms": 900,
+        "max_ping_ms": 9000,
         "required_count": 10,
     },
     {
@@ -49,7 +49,7 @@ TASKS = [
 
 # Настройки тестирования
 XRAY_TIMEOUT = 5.0  # Таймаут HTTP теста (сек)
-XRAY_CONCURRENCY = 200  # Параллельных тестов
+XRAY_CONCURRENCY = 50  # Параллельных тестов (без перегруза CPU/диска)
 MTPROTO_TIMEOUT = 3.0  # Таймаут TCP теста (сек)
 MTPROTO_CONCURRENCY = 200  # Параллельных тестов
 
