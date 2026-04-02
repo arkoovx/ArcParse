@@ -1,6 +1,6 @@
-#profile-title: ArcVPN Free | Telegram
+#profile-title: arqVPN Free | Telegram
 #profile-update-interval: 48
-#support-url: https://t.me/arcparse
+#support-url: https://t.me/arqparse
 
 https://t.me/proxy?server=178.63.167.16&port=443&secret=7gAA8A8Pd1VV____9QBuLmltZWRpYS5zdGV
 https://t.me/proxy?server=91.107.216.33&port=443&secret=eeNEgYdJvXrFGRMCIMJdCQtY2RueWVrdGFuZXQuY29tZmFyYWt

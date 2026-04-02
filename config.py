@@ -1,4 +1,4 @@
-"""Конфигурация и настройки задач для ArcParse."""
+"""Конфигурация и настройки задач для ArqParse."""
 
 import os
 
@@ -34,7 +34,7 @@ TASKS = [
             os.path.join(RAW_CONFIGS_DIR, "25.txt"),
         ],
         "out_file": os.path.join(RESULTS_DIR, "top_vpn.txt"),
-        "profile_title": "ArcVPN Free | Обычный",
+        "profile_title": "arqVPN Free | Обычный",
         "type": "xray",
         "target_url": "https://google.com",
         "max_ping_ms": 9000,
@@ -49,7 +49,7 @@ TASKS = [
             os.path.join(RAW_CONFIGS_DIR, "bypass-all.txt"),
         ],
         "out_file": os.path.join(RESULTS_DIR, "top_bypass.txt"),
-        "profile_title": "ArcVPN Free | Обход",
+        "profile_title": "arqVPN Free | Обход",
         "type": "xray",
         "target_url": "https://google.com",
         "max_ping_ms": 12000,
@@ -64,7 +64,7 @@ TASKS = [
             os.path.join(RAW_CONFIGS_DIR, "MTProto.txt"),
         ],
         "out_file": os.path.join(RESULTS_DIR, "top_MTProto.txt"),
-        "profile_title": "ArcVPN Free | Telegram",
+        "profile_title": "arqVPN Free | Telegram",
         "type": "mtproto",
         "target_url": "https://core.telegram.org",
         "max_ping_ms": 200,
