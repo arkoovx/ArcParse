@@ -180,7 +180,7 @@ def main(force_download: bool = False, skip_xray: bool = False, proxy_url: str =
             all_results[task['name']] = []
         
         # Сохраняем результаты
-        profile_title = task.get('profile_title', 'ArcVPN Free')
+        profile_title = task.get('profile_title', 'arqVPN Free')
         save_results(task['out_file'], all_results[task['name']], profile_title, task['name'], no_ui)
     
     # Объединяем top_vpn и top_bypass в all_top_vpn
@@ -197,7 +197,7 @@ def main(force_download: bool = False, skip_xray: bool = False, proxy_url: str =
     print(f"\n{Colors.GREEN}{Colors.BOLD}")
     print("╔══════════════════════════════════════════════════════════╗")
     print("║                                                          ║")
-    print("║     ✓  ArcParse завершен успешно!                        ║")
+    print("║     ✓  ArqParse завершен успешно!                        ║")
     print("║                                                          ║")
     print(f"║     Результаты: {RESULTS_DIR:<40} ║")
     print("║                                                          ║")
@@ -328,9 +328,9 @@ def merge_vpn_configs():
         if configs:
             os.makedirs(os.path.dirname(all_top_vpn_file), exist_ok=True)
             with open(all_top_vpn_file, 'w', encoding='utf-8') as f:
-                f.write("#profile-title: ArcVPN Free | Все\n")
+                f.write("#profile-title: arqVPN Free | Все\n")
                 f.write("#profile-update-interval: 48\n")
-                f.write("#support-url: https://t.me/arcparse\n")
+                f.write("#support-url: https://t.me/arqparse\n")
                 f.write("\n")
                 for config in configs:
                     f.write(f"{config}\n")
@@ -341,7 +341,7 @@ def merge_vpn_configs():
 
 
 def format_config_name(url: str, index: int, config_type: str = "Base VPN", ping_ms: int = None) -> str:
-    """Форматирует название конфига: оставляет только эмодзи + Arc с номером.
+    """Форматирует название конфига: оставляет только эмодзи + arqVPN с номером.
     
     Args:
         url: URL конфига
@@ -379,10 +379,10 @@ def format_config_name(url: str, index: int, config_type: str = "Base VPN", ping
     
     # Формируем название с номером
     if config_type == "Bypass VPN":
-        name_suffix = f"Arc-Обход-{index}"
+        name_suffix = f"arqVPN-Обход-{index}"
     else:
         # Для Base VPN и Telegram MTProto
-        name_suffix = f"Arc-{index}"
+        name_suffix = f"arqVPN-{index}"
     
     # Добавляем молнию если пинг < 100 мс
     fast_indicator = "⚡ " if ping_ms is not None and ping_ms < 100 else ""
@@ -394,7 +394,7 @@ def format_config_name(url: str, index: int, config_type: str = "Base VPN", ping
         return f"{base_url}#{fast_indicator}{name_suffix}"
 
 
-def save_results(filepath: str, results: list, profile_title: str = "ArcParse results", config_type: str = "Base VPN", no_ui: bool = False):
+def save_results(filepath: str, results: list, profile_title: str = "ArqParse results", config_type: str = "Base VPN", no_ui: bool = False):
     """Сохраняет результаты в файл.
     
     Args:
@@ -426,7 +426,7 @@ def save_results(filepath: str, results: list, profile_title: str = "ArcParse re
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
-        description="ArcParse - скачивание и тестирование VPN конфигов",
+        description="ArqParse - скачивание и тестирование VPN конфигов",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=f"""
 {Colors.CYAN}Примеры:{Colors.RESET}
