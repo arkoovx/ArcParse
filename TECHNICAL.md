@@ -131,7 +131,7 @@ ArqParse/
 ```
 #profile-title: ArqParse results
 #profile-update-interval: 48
-#support-url: https://t.me/arqparse
+#support-url: https://t.me/arqhub
 
 vless://... # 150ms
 vless://... # 200ms
