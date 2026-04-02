@@ -330,7 +330,7 @@ def merge_vpn_configs():
             with open(all_top_vpn_file, 'w', encoding='utf-8') as f:
                 f.write("#profile-title: arqVPN Free | Все\n")
                 f.write("#profile-update-interval: 48\n")
-                f.write("#support-url: https://t.me/arqparse\n")
+                f.write("#support-url: https://t.me/arqhub\n")
                 f.write("\n")
                 for config in configs:
                     f.write(f"{config}\n")
@@ -379,10 +379,10 @@ def format_config_name(url: str, index: int, config_type: str = "Base VPN", ping
     
     # Формируем название с номером
     if config_type == "Bypass VPN":
-        name_suffix = f"arqVPN-Обход-{index}"
+        name_suffix = f"arq-Обход-{index}"
     else:
         # Для Base VPN и Telegram MTProto
-        name_suffix = f"arqVPN-{index}"
+        name_suffix = f"arq-{index}"
     
     # Добавляем молнию если пинг < 100 мс
     fast_indicator = "⚡ " if ping_ms is not None and ping_ms < 100 else ""
@@ -409,7 +409,7 @@ def save_results(filepath: str, results: list, profile_title: str = "ArqParse re
     with open(filepath, 'w', encoding='utf-8') as f:
         f.write(f"#profile-title: {profile_title}\n")
         f.write("#profile-update-interval: 48\n")
-        f.write("#support-url: https://t.me/arcparse\n")
+        f.write("#support-url: https://t.me/arqhub\n")
         f.write("\n")
         
         for index, (url, ping_ms) in enumerate(results, 1):
