@@ -1,6 +1,7 @@
 """File handling utilities with refactored, streamlined logic."""
 
 import os
+import sys
 import ipaddress
 import math
 from typing import List, Set
@@ -9,8 +10,19 @@ import base64
 import json
 from functools import lru_cache
 from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
-from utils.logger import log
-from config.settings import SNI_DOMAINS
+
+# Добавляем корень проекта в sys.path
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from logger import log
+
+# SNI_DOMAINS загружаются динамически чтобы избежать циклического импорта
+def _get_sni_domains():
+    """Загружает SNI_DOMAINS из config.py (или пустой список)."""
+    try:
+        import config
+        return getattr(config, 'SNI_DOMAINS', [])
+    except Exception:
+        return []
 
 # Pre-compiled regex patterns for performance (avoids recompiling on every call)
 _BASE64_PATTERN = re.compile(r'^[A-Za-z0-9+/]+=*$')
@@ -19,6 +31,20 @@ _INSECURE_PATTERN = re.compile(r'insecure=([^&\?#]+)')
 _SKIPCERT_PATTERN = re.compile(r'skip-cert-verify=([^&\?#]+)')
 _VPN_PROTOCOL_PATTERN = re.compile(r'^(vmess|vless|trojan|ss|ssr|tuic|hysteria|hysteria2|hy2)://', re.IGNORECASE)
 _GLUE_PATTERN = re.compile(r'(vmess|vless|trojan|ss|ssr|tuic|hysteria|hysteria2|hy2)://')
+
+# Слабые методы шифрования Shadowsocks (O(1) поиск через frozenset)
+_WEAK_SS_METHODS: frozenset = frozenset({
+    'rc4-md5', 'rc4-md5-6',
+    'aes-128-cfb', 'aes-192-cfb', 'aes-256-cfb',
+    'aes-128-cfb8', 'aes-192-cfb8', 'aes-256-cfb8',
+    'aes-128-ctr', 'aes-192-ctr', 'aes-256-ctr',
+    'bf-cfb', 'camellia-128-cfb', 'camellia-192-cfb', 'camellia-256-cfb',
+    'cast5-cfb', 'des-cfb', 'idea-cfb', 'rc2-cfb', 'seed-cfb',
+    'salsa20', 'chacha20', 'xsalsa20', 'xchacha20',
+})
+
+# Абсолютный путь к корню проекта для относительных путей
+_THIS_DIR = os.path.dirname(os.path.abspath(__file__))
 
 
 def _write_chunk(args):
@@ -190,7 +216,9 @@ def extract_ip_from_config(config_line: str):
     return None
 
 
-def load_cidr_whitelist(cidr_file_path: str = "../source/config/cidrwhitelist.txt") -> set:
+def load_cidr_whitelist(
+    cidr_file_path: str = os.path.join(_THIS_DIR, "config", "cidrwhitelist.txt")
+) -> set:
     """Load CIDR whitelist from file and return as a set of individual IPs for fast lookup."""
     try:
         with open(cidr_file_path, 'r', encoding='utf-8', buffering=65536) as f:
@@ -328,18 +356,7 @@ def has_insecure_setting(config_line: str) -> bool:
                 method = ss_part.split(':')[0].lower()
 
                 # Check for weak encryption methods
-                weak_methods = [
-                    'rc4-md5', 'rc4-md5-6', 'aes-128-cfb', 'aes-192-cfb', 'aes-256-cfb',
-                    'aes-128-cfb8', 'aes-192-cfb8', 'aes-256-cfb8', 'aes-128-cfb1',
-                    'aes-192-cfb1', 'aes-256-cfb1', 'aes-128-cfb-fast', 'aes-192-cfb-fast',
-                    'aes-256-cfb-fast', 'aes-128-cfb-simple', 'aes-192-cfb-simple',
-                    'aes-256-cfb-simple', 'aes-128-ctr', 'aes-192-ctr', 'aes-256-ctr',
-                    'bf-cfb', 'camellia-128-cfb', 'camellia-192-cfb', 'camellia-256-cfb',
-                    'cast5-cfb', 'des-cfb', 'idea-cfb', 'rc2-cfb', 'seed-cfb',
-                    'salsa20', 'chacha20', 'xsalsa20', 'xchacha20'
-                ]
-
-                if method in weak_methods:
+                if method in _WEAK_SS_METHODS:
                     return True
             else:
                 # Contains credentials in base64 format: ss://base64(method:password)@host:port
@@ -359,18 +376,7 @@ def has_insecure_setting(config_line: str) -> bool:
                         method = decoded_credentials.split(':')[0].lower()
 
                         # Check for weak encryption methods
-                        weak_methods = [
-                            'rc4-md5', 'rc4-md5-6', 'aes-128-cfb', 'aes-192-cfb', 'aes-256-cfb',
-                            'aes-128-cfb8', 'aes-192-cfb8', 'aes-256-cfb8', 'aes-128-cfb1',
-                            'aes-192-cfb1', 'aes-256-cfb1', 'aes-128-cfb-fast', 'aes-192-cfb-fast',
-                            'aes-256-cfb-fast', 'aes-128-cfb-simple', 'aes-192-cfb-simple',
-                            'aes-256-cfb-simple', 'aes-128-ctr', 'aes-192-ctr', 'aes-256-ctr',
-                            'bf-cfb', 'camellia-128-cfb', 'camellia-192-cfb', 'camellia-256-cfb',
-                            'cast5-cfb', 'des-cfb', 'idea-cfb', 'rc2-cfb', 'seed-cfb',
-                            'salsa20', 'chacha20', 'xsalsa20', 'xchacha20'
-                        ]
-
-                        if method in weak_methods:
+                        if method in _WEAK_SS_METHODS:
                             return True
 
                     except Exception:
@@ -395,18 +401,7 @@ def has_insecure_setting(config_line: str) -> bool:
                 method = parts[3].lower()
 
                 # Check for weak encryption methods
-                weak_methods = [
-                    'rc4-md5', 'rc4-md5-6', 'aes-128-cfb', 'aes-192-cfb', 'aes-256-cfb',
-                    'aes-128-cfb8', 'aes-192-cfb8', 'aes-256-cfb8', 'aes-128-cfb1',
-                    'aes-192-cfb1', 'aes-256-cfb1', 'aes-128-cfb-fast', 'aes-192-cfb-fast',
-                    'aes-256-cfb-fast', 'aes-128-cfb-simple', 'aes-192-cfb-simple',
-                    'aes-256-cfb-simple', 'aes-128-ctr', 'aes-192-ctr', 'aes-256-ctr',
-                    'bf-cfb', 'camellia-128-cfb', 'camellia-192-cfb', 'camellia-256-cfb',
-                    'cast5-cfb', 'des-cfb', 'idea-cfb', 'rc2-cfb', 'seed-cfb',
-                    'salsa20', 'chacha20', 'xsalsa20', 'xchacha20'
-                ]
-
-                if method in weak_methods:
+                if method in _WEAK_SS_METHODS:
                     return True
         except Exception:
             pass
@@ -422,12 +417,11 @@ def has_insecure_setting(config_line: str) -> bool:
 
 def filter_secure_configs(configs: List[str]) -> List[str]:
     """Filter out configs with insecure settings using parallel processing."""
-    from concurrent.futures import ThreadPoolExecutor
-    
+
     def check_secure(config: str) -> tuple:
         """Return (config, is_secure) tuple."""
         return (config, not has_insecure_setting(config))
-    
+
     # Use ThreadPoolExecutor for parallel filtering (IO-bound due to regex operations)
     secure_configs = []
     with ThreadPoolExecutor(max_workers=8) as executor:
@@ -435,7 +429,7 @@ def filter_secure_configs(configs: List[str]) -> List[str]:
         for config, is_secure in results:
             if is_secure:
                 secure_configs.append(config)
-    
+
     return secure_configs
 
 

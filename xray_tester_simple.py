@@ -22,12 +22,20 @@ import requests
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
+try:
+    from constants import XRAY_BASE_PORT, XRAY_PORT_RANGE, MAX_SAFE_CONCURRENCY
+except ImportError:
+    # Fallback если constants.py недоступен
+    XRAY_BASE_PORT = 20000
+    XRAY_PORT_RANGE = 10000
+    MAX_SAFE_CONCURRENCY = 500
+
 
 # Глобальный список процессов для очистки
 _running_processes: List[subprocess.Popen] = []
 _process_lock = threading.Lock()
-# Монотонный счётчик портов (диапазон 20000-30000, 10000 портов)
-_port_counter = itertools.count(20000)
+# Монотонный счётчик портов (диапазон 20000-20000+XRAY_PORT_RANGE)
+_port_counter = itertools.count(XRAY_BASE_PORT)
 _port_counter_lock = threading.Lock()
 # Семафор для ограничения реального количества одновременных Xray-процессов
 _xray_semaphore = threading.Semaphore(30)  # не более 30 Xray одновременно
@@ -60,13 +68,12 @@ def _get_next_port() -> int:
     """
     Выдаёт следующий порт из монотонно возрастающего диапазона.
     Не делает bind-проверку (она создаёт TOCTOU race condition при 150 потоках).
-    Используем большой диапазон (10000 портов) чтобы снизить вероятность коллизий.
-    При конкурентности 150 вероятность столкновения близка к нулю.
+    Используем большой диапазон (XRAY_PORT_RANGE) чтобы снизить вероятность коллизий.
     """
     with _port_counter_lock:
         port = next(_port_counter)
-    # Оборачиваем в диапазон 20000-30000 (10000 портов)
-    port = 20000 + (port % 10000)
+    # Оборачиваем в диапазон XRAY_BASE_PORT .. XRAY_BASE_PORT + XRAY_PORT_RANGE
+    port = XRAY_BASE_PORT + (port % XRAY_PORT_RANGE)
     return port
 
 

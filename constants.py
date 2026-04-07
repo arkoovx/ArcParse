@@ -1,4 +1,7 @@
-"""Centralized constants for VPN config validation system."""
+"""Centralized constants for arqParse VPN config validation system.
+
+Используется xray_tester_simple.py и другими модулями.
+"""
 
 # Concurrency settings
 V2RAYN_MAX_CONCURRENCY = 1000  # Reference: v2rayN SpeedTestPageSize
@@ -13,7 +16,7 @@ SPEED_TEST_CONCURRENCY = 5
 
 # Timeout settings (seconds)
 DEFAULT_TCP_TIMEOUT = 3.0
-DEFAULT_HTTP_TIMEOUT = 3.0  # Reduced to match VALIDATION_HTTP_TIMEOUT
+DEFAULT_HTTP_TIMEOUT = 5.0
 DEFAULT_SPEED_TEST_TIMEOUT = 30.0
 DEFAULT_PING_TIMEOUT = 5.0
 
@@ -21,11 +24,11 @@ DEFAULT_PING_TIMEOUT = 5.0
 FAST_TCP_TIMEOUT = 0.5
 
 # DNS cache settings
-DNS_CACHE_TTL_SECONDS = 60  # Reduced from 300s for dynamic IP support
+DNS_CACHE_TTL_SECONDS = 60
 
-# Port settings
+# Port settings — используются в xray_tester_simple.py
 XRAY_BASE_PORT = 20000
-XRAY_PORT_RANGE = 5000  # Increased from 1000 to avoid TIME_WAIT conflicts
+XRAY_PORT_RANGE = 10000  # Диапазон портов: 20000-30000
 
 # Test URLs (common connectivity endpoints)
 SPEED_TEST_URLS = [

@@ -15,7 +15,7 @@ from config import TASKS, RESULTS_DIR
 from downloader import download_all_tasks
 from parser import read_configs_from_file, read_mtproto_from_file
 from testers import test_xray_configs
-from testers_mtproto import test_mtproto_configs
+from testers_mtproto import test_mtproto_configs, test_mtproto_configs_and_save
 from ui import Colors
 
 
@@ -370,15 +370,15 @@ class ArcParseGUI:
             
             self.log(f"Найдено {len(configs)} MTProto конфигов для тестирования", "info")
             
-            # Запускаем тестирование MTProto - правильный порядок параметров
-            working, passed, failed = test_mtproto_configs(
+            # Запускаем тестирование MTProto - используем функцию с сохранением
+            working, passed, failed = test_mtproto_configs_and_save(
                 configs=configs,
                 max_ping_ms=task['max_ping_ms'],
                 required_count=task['required_count'],
+                out_file=task['out_file'],
+                profile_title=task['profile_title'],
                 log_func=self.log,
                 progress_func=self._progress_callback,
-                out_file=task['out_file'],
-                profile_title=task['profile_title']
             )
             
             self.log(f"Результаты MTProto: ✓{passed} | ✗{failed} | 🔄{working}", "success")

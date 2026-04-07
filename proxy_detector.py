@@ -50,10 +50,21 @@ def find_active_proxy_port(timeout: float = 1.0) -> Optional[int]:
     return None
 
 
+def get_proxy_info(proxy_url: str, timeout: float = 5.0) -> dict:
+    """Получает IP и страну через прокси за один запрос."""
+    try:
+        proxies = {'http': proxy_url, 'https': proxy_url}
+        response = requests.get('https://ipwho.is/', proxies=proxies, timeout=timeout)
+        data = response.json()
+        return {'ip': data.get('ip'), 'country': data.get('country')}
+    except Exception:
+        return {'ip': None, 'country': None}
+
+
 def verify_proxy_protection(proxy_port: int, timeout: float = 5.0) -> Dict:
     """
     Проверяет скрывает ли прокси реальный IP.
-    
+
     Returns:
         Dict с: active, real_ip, proxy_ip, different, country
     """
@@ -64,32 +75,24 @@ def verify_proxy_protection(proxy_port: int, timeout: float = 5.0) -> Dict:
         'different': False,
         'country': None
     }
-    
+
     try:
-        # Получаем реальный IP
+        # Запрос 1: реальный IP
         result['real_ip'] = get_real_ip(timeout=timeout)
-        
-        # Получаем IP через прокси
+
+        # Запрос 2: IP + страна через прокси (один запрос вместо двух)
         proxy_url = f"socks5h://127.0.0.1:{proxy_port}"
-        result['proxy_ip'] = get_proxy_ip(proxy_url, timeout=timeout)
-        
-        # Получаем страну
-        if result['proxy_ip']:
-            try:
-                proxies = {'http': proxy_url, 'https': proxy_url}
-                response = requests.get('https://ipwho.is/', proxies=proxies, timeout=timeout)
-                data = response.json()
-                result['country'] = data.get('country')
-            except Exception:
-                pass
-        
+        proxy_info = get_proxy_info(proxy_url, timeout=timeout)
+        result['proxy_ip'] = proxy_info['ip']
+        result['country'] = proxy_info['country']
+
         # Сравниваем
         if result['real_ip'] and result['proxy_ip']:
             result['different'] = result['real_ip'] != result['proxy_ip']
             result['active'] = result['different']
-        
+
         return result
-    except Exception as e:
+    except Exception:
         return result
 
 

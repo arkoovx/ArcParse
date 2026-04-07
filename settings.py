@@ -3,11 +3,15 @@
 import os
 from datetime import datetime
 import zoneinfo
-from utils.logger import log
+import sys
+
+# Добавляем корень проекта в sys.path для импорта logger
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from logger import log
 
 # Repository settings
-GITHUB_TOKEN = os.environ.get("MY_TOKEN")
-REPO_NAME = "whoahaow/rjsxrd"  # Updated repository name
+GITHUB_TOKEN = os.environ.get("GITHUB_TOKEN")
+REPO_NAME = "arkoovx/arqParse"
 
 # Time settings
 ZONE = zoneinfo.ZoneInfo("Europe/Moscow")
