@@ -66,6 +66,8 @@ def _run_mtproto_tests(
     max_workers: int = 100,
     log_func=None,
     progress_func=None,
+    stop_flag=None,
+    skip_flag=None,
 ) -> List[Tuple[str, float]]:
     """Внутренняя функция: запускает тесты и возвращает список (url, ping_ms)."""
 
@@ -73,15 +75,15 @@ def _run_mtproto_tests(
         if log_func:
             log_func(msg, tag)
 
-    def _progress(current, total):
+    def _progress(current, total, suitable=0, required=0):
         if progress_func:
-            progress_func(current, total)
+            progress_func(current, total, suitable, required)
 
     results: List[Tuple[str, float]] = []
     total = len(configs)
     processed = 0
     lock = threading.Lock()
-    stop_flag = threading.Event()
+    internal_stop = threading.Event()
 
     # Таймаут = max_ping_ms / 1000 с небольшим запасом (но не более 10 с)
     timeout_sec = min(max_ping_ms / 1000 + 0.2, 10.0)
@@ -95,21 +97,28 @@ def _run_mtproto_tests(
         }
 
         for future in as_completed(future_to_url):
-            if stop_flag.is_set():
+            if internal_stop.is_set() or (stop_flag and stop_flag.is_set()):
+                break
+            if skip_flag and skip_flag.is_set():
+                _log("Пропуск MTProto теста...", "warning")
+                skip_flag.clear()
                 break
             try:
                 success, ping_ms, url = future.result()
 
                 with lock:
                     processed += 1
-                    _progress(processed, total)
+                    suitable_count = len(results) + (1 if (success and ping_ms <= max_ping_ms) else 0)
+                    _progress(processed, total, suitable_count, required_count)
 
                     if success and ping_ms <= max_ping_ms:
                         results.append((url, ping_ms))
                         _log(f"✓ {ping_ms:.0f} мс (найдено: {len(results)}/{required_count})", "success")
 
                         if len(results) >= required_count:
-                            stop_flag.set()
+                            internal_stop.set()
+                            if stop_flag:
+                                stop_flag.set()
                             break
                     else:
                         status = "timeout" if ping_ms == float('inf') else f"{ping_ms:.0f} мс"
@@ -130,10 +139,13 @@ def test_mtproto_configs(
     max_workers: int = 100,
     log_func=None,
     progress_func=None,
+    stop_flag=None,
+    skip_flag=None,
 ) -> List[Tuple[str, float]]:
     """Консольный режим: возвращает список (url, ping_ms)."""
     return _run_mtproto_tests(
-        configs, max_ping_ms, required_count, max_workers, log_func, progress_func
+        configs, max_ping_ms, required_count, max_workers, log_func, progress_func,
+        stop_flag=stop_flag, skip_flag=skip_flag,
     )
 
 
@@ -146,10 +158,13 @@ def test_mtproto_configs_and_save(
     max_workers: int = 100,
     log_func=None,
     progress_func=None,
+    stop_flag=None,
+    skip_flag=None,
 ) -> Tuple[int, int, int]:
     """GUI режим: сохраняет в файл, возвращает (working, passed, failed)."""
     results = _run_mtproto_tests(
-        configs, max_ping_ms, required_count, max_workers, log_func, progress_func
+        configs, max_ping_ms, required_count, max_workers, log_func, progress_func,
+        stop_flag=stop_flag, skip_flag=skip_flag,
     )
 
     working = len(results)

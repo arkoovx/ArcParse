@@ -391,6 +391,8 @@ def test_batch(
     target_url: str = "https://www.google.com/generate_204",
     log_func: callable = None,
     progress_func: callable = None,
+    stop_flag: threading.Event = None,
+    skip_flag: threading.Event = None,
 ) -> List[Tuple[str, bool, float]]:
     """Тестирует батч конфигов конкурентно. Задачи подаются батчами, чтобы stop_flag реально останавливал работу.
 
@@ -404,7 +406,9 @@ def test_batch(
         max_ping_ms: Максимальный пинг. Если None — не фильтрует по пингу.
         target_url: URL для тестирования
         log_func: Функция логирования msg, tag — для GUI
-        progress_func: Функция прогресса current, total — для GUI
+        progress_func: Функция прогресса current, total, suitable, required — для GUI
+        stop_flag: threading.Event для полной остановки теста
+        skip_flag: threading.Event для пропуска текущего батча
     """
     def _log(msg, tag="info"):
         if log_func:
@@ -412,9 +416,9 @@ def test_batch(
         else:
             print(msg)
 
-    def _progress(current, total):
+    def _progress(current, total, suitable=0, required=0):
         if progress_func:
-            progress_func(current, total)
+            progress_func(current, total, suitable, required)
 
     if not urls:
         return []
@@ -423,7 +427,7 @@ def test_batch(
     results_lock = threading.Lock()
     completed = 0
     last_batch_start = 0
-    stop_flag = threading.Event()
+    internal_stop = threading.Event()
     BATCH_SIZE = concurrency * 2  # подаём с запасом 2x от concurrency
 
     _log(f"Тестирование {len(urls)} конфигов (concurrency={concurrency}, timeout={timeout}s)...", "info")
@@ -432,18 +436,24 @@ def test_batch(
         try:
             # Разбиваем на батчи и подаём по мере необходимости
             for batch_start in range(0, len(urls), BATCH_SIZE):
-                if stop_flag.is_set():
+                if internal_stop.is_set() or (stop_flag and stop_flag.is_set()):
+                    break
+
+                # Проверяем skip_flag — пропуск текущего батча
+                if skip_flag and skip_flag.is_set():
+                    _log("Пропуск текущего батча...", "warning")
+                    skip_flag.clear()
                     break
 
                 batch = urls[batch_start:batch_start + BATCH_SIZE]
                 futures = {
                     executor.submit(_test_single_config, url, xray_path, timeout, target_url): url
                     for url in batch
-                    if not stop_flag.is_set()
+                    if not internal_stop.is_set() and not (stop_flag and stop_flag.is_set())
                 }
 
                 for future in as_completed(futures):
-                    if stop_flag.is_set():
+                    if internal_stop.is_set() or (stop_flag and stop_flag.is_set()):
                         future.cancel()
                         continue
                     try:
@@ -454,18 +464,18 @@ def test_batch(
                             count = completed
 
                         # Обновляем прогресс
-                        _progress(count, len(urls))
-
-                        # Считаем рабочие и подходящие конфиги
                         all_working_count = sum(1 for r in results if r[1])
                         if max_ping_ms is not None:
                             suitable_count = sum(1 for r in results if r[1] and r[2] <= max_ping_ms)
                         else:
                             suitable_count = all_working_count
 
+                        _progress(count, len(urls), suitable_count, required_count or 0)
+
+                        # Считаем рабочие и подходящие конфиги
                         # Логируем каждый 5-й конфиг или каждые 20 (для консоли)
                         log_every = 5 if log_func else 20
-                        if not stop_flag.is_set() and (count % log_every == 0 or count == len(urls)):
+                        if not internal_stop.is_set() and not (stop_flag and stop_flag.is_set()) and (count % log_every == 0 or count == len(urls)):
                             batch_results = results[last_batch_start:count]
                             batch_pings = [r[2] for r in batch_results if r[1]]
                             min_ping = min(batch_pings) if batch_pings else 0
@@ -487,7 +497,9 @@ def test_batch(
                             else:
                                 _log(f"Прогресс: {count}/{len(urls)} — Рабочих: {all_working_count} — Мин. пинг: {min_ping:.0f}мс", "info")
                             _log(f"Найдено достаточно конфигов ({required_count}), остановка", "success")
-                            stop_flag.set()
+                            internal_stop.set()
+                            if stop_flag:
+                                stop_flag.set()
                             break
 
                     except Exception:
@@ -496,15 +508,19 @@ def test_batch(
 
         except KeyboardInterrupt:
             _log("\n[!] Прерывание...", "warning")
-            stop_flag.set()
-            time.sleep(0.2)
+            internal_stop.set()
+            if stop_flag:
+                stop_flag.set()
         finally:
-            stop_flag.set()
+            internal_stop.set()
+            if stop_flag:
+                stop_flag.set()
+            # Отменяем ещё не начавшиеся futures и не ждём завершённые
             try:
-                executor.shutdown(wait=True, cancel_futures=True)
+                executor.shutdown(wait=False, cancel_futures=True)
             except Exception:
                 pass
-            time.sleep(0.3)
+            # Немедленно убиваем все Xray процессы
             _cleanup_all()
 
     # Сортируем по latency (fastest first)

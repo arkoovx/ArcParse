@@ -24,7 +24,9 @@ def test_xray_configs(
     progress_func: callable = None,
     out_file: str = None,
     profile_title: str = None,
-    config_type: str = None
+    config_type: str = None,
+    stop_flag=None,
+    skip_flag=None,
 ) -> Tuple[int, int, int]:
     """
     Тестирует список Xray конфигов.
@@ -41,7 +43,9 @@ def test_xray_configs(
         out_file: Файл для сохранения результатов (для GUI)
         profile_title: Название профиля (для GUI)
         config_type: Тип конфига (для GUI)
-    
+        stop_flag: threading.Event для полной остановки
+        skip_flag: threading.Event для пропуска текущего файла
+
     Returns:
         Для консоли: List[Tuple[str, float]] отсортированный по пингу
         Для GUI: Tuple[working, passed, failed]
@@ -81,6 +85,8 @@ def test_xray_configs(
             target_url=target_url,
             log_func=log_func,
             progress_func=progress_func,
+            stop_flag=stop_flag,
+            skip_flag=skip_flag,
         )
     except Exception as e:
         _log(f"Ошибка при тестировании: {str(e)}", "error")

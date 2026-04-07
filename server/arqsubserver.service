@@ -1,0 +1,16 @@
+[Unit]
+Description=arqParse Subscription Server
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/root/arqsubserver
+ExecStart=/root/arqsubserver/venv/bin/python /root/arqsubserver/server.py
+Restart=always
+RestartSec=5
+StandardOutput=append:/root/arqsubserver/logs/server.log
+StandardError=append:/root/arqsubserver/logs/server.log
+
+[Install]
+WantedBy=multi-user.target
