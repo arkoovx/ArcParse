@@ -2,7 +2,6 @@
 
 import os
 import re
-import json
 from urllib.parse import parse_qs
 from typing import Optional, Dict, List
 
@@ -112,11 +111,7 @@ def read_mtproto_from_file(filepath: str) -> List[str]:
     
     # Очищаем контент
     content = content.replace('&amp;', '&')
-    
-    # Разбиваем по шаблону https://t.me/proxy или tg://proxy
-    # Используем regex для разделения склеенных URL
-    import re
-    
+
     # Находим все MTProto ссылки
     pattern = r'(https://t\.me/proxy[^h]+|tg://proxy[^t]+|https://t\.me/proxy\?[^\s]+)'
     matches = re.findall(pattern, content)

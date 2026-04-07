@@ -6,6 +6,7 @@
 import os
 import sys
 import json
+import base64
 import subprocess
 import tempfile
 import time
@@ -13,6 +14,7 @@ import socket
 import signal
 import threading
 import atexit
+import itertools
 from typing import List, Tuple, Optional, Dict
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
@@ -24,8 +26,11 @@ from urllib3.util.retry import Retry
 # Глобальный список процессов для очистки
 _running_processes: List[subprocess.Popen] = []
 _process_lock = threading.Lock()
-_port_counter = [20000]
-_port_lock = threading.Lock()
+# Монотонный счётчик портов (диапазон 20000-30000, 10000 портов)
+_port_counter = itertools.count(20000)
+_port_counter_lock = threading.Lock()
+# Семафор для ограничения реального количества одновременных Xray-процессов
+_xray_semaphore = threading.Semaphore(30)  # не более 30 Xray одновременно
 
 
 def _cleanup_all():
@@ -52,22 +57,17 @@ atexit.register(_cleanup_all)
 
 
 def _get_next_port() -> int:
-    """Получает следующий свободный порт."""
-    for _ in range(10):
-        with _port_lock:
-            port = _port_counter[0]
-            _port_counter[0] = (port - 20000 + 1) % 2000 + 20000
-        
-        try:
-            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-            sock.bind(('127.0.0.1', port))
-            sock.close()
-            return port
-        except OSError:
-            continue
-    
-    raise RuntimeError("Не удалось найти свободный порт")
+    """
+    Выдаёт следующий порт из монотонно возрастающего диапазона.
+    Не делает bind-проверку (она создаёт TOCTOU race condition при 150 потоках).
+    Используем большой диапазон (10000 портов) чтобы снизить вероятность коллизий.
+    При конкурентности 150 вероятность столкновения близка к нулю.
+    """
+    with _port_counter_lock:
+        port = next(_port_counter)
+    # Оборачиваем в диапазон 20000-30000 (10000 портов)
+    port = 20000 + (port % 10000)
+    return port
 
 
 def _wait_for_port(port: int, timeout: float = 1.0) -> bool:
@@ -91,8 +91,7 @@ def _wait_for_port(port: int, timeout: float = 1.0) -> bool:
 def _parse_vless_url(url: str) -> Optional[Dict]:
     """Парсит VLESS URL в outbound конфиг."""
     from urllib.parse import parse_qs, unquote
-    import base64
-    
+
     try:
         url_part = url.replace('vless://', '', 1)
         if '#' in url_part:
@@ -174,7 +173,6 @@ def _create_xray_config(url: str, socks_port: int) -> Optional[Dict]:
     elif protocol == 'vmess':
         # Упрощённый парсинг VMess
         try:
-            import base64
             encoded = url.replace('vmess://', '').strip()
             padding = 4 - len(encoded) % 4
             if padding != 4:
@@ -290,210 +288,208 @@ def _create_xray_config(url: str, socks_port: int) -> Optional[Dict]:
     }
 
 
-def _test_single_config(url: str, xray_path: str, timeout: float) -> Tuple[str, bool, float]:
+def _test_single_config(url: str, xray_path: str, timeout: float,
+                         target_url: str = "https://www.google.com/generate_204") -> Tuple[str, bool, float]:
     """Тестирует один конфиг через Xray."""
-    if not os.path.exists(xray_path):
-        return (url, False, 0.0)
-    
-    port = _get_next_port()
-    config = _create_xray_config(url, port)
-    
-    if not config:
-        return (url, False, 0.0)
-    
-    # Создаём временный файл конфига
-    with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
-        json.dump(config, f)
-        config_path = f.name
-    
-    proc = None
-    try:
-        # Запускаем Xray
-        proc = subprocess.Popen([xray_path, '-c', config_path], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        with _process_lock:
-            _running_processes.append(proc)
-        
-        # Ждём порт (оптимизировано - меньше timeout)
-        if not _wait_for_port(port, timeout=1.0):
-            proc.terminate()
-            try:
-                proc.wait(timeout=1)
-            except subprocess.TimeoutExpired:
-                proc.kill()
+    with _xray_semaphore:  # Ждём, пока есть свободный слот
+        if not os.path.exists(xray_path):
+            return (url, False, 0.0)
+
+        port = _get_next_port()
+        config = _create_xray_config(url, port)
+
+        if not config:
+            return (url, False, 0.0)
+
+        # Создаём временный файл конфига
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
+            json.dump(config, f)
+            config_path = f.name
+
+        proc = None
+        try:
+            # Запускаем Xray
+            proc = subprocess.Popen([xray_path, '-c', config_path], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             with _process_lock:
-                if proc in _running_processes:
-                    _running_processes.remove(proc)
-            try:
-                os.unlink(config_path)
-            except Exception:
-                pass
-            return (url, False, 0.0)
-        
-        try:
-            os.unlink(config_path)
-        except Exception:
-            pass
-        
-        # Тест через SOCKS - оптимизированная конфигурация
-        session = requests.Session()
-        session.proxies = {'http': f'socks5h://127.0.0.1:{port}', 'https': f'socks5h://127.0.0.1:{port}'}
-        # Упрощённая retry стратегия - без backoff для ускорения
-        retry = Retry(total=0, status_forcelist=())  # Нет повторов
-        adapter = HTTPAdapter(max_retries=retry, pool_connections=1, pool_maxsize=1)
-        session.mount('http://', adapter)
-        session.mount('https://', adapter)
-        
-        # Один тестовый URL - достаточно быстрое определение
-        test_url = "https://www.google.com/generate_204"
-        
-        try:
-            start = time.perf_counter()
-            response = session.get(test_url, timeout=timeout, allow_redirects=False)
-            latency = (time.perf_counter() - start) * 1000
-            
-            # Считаем успешным если статус < 500 (204, 301, 302 - OK)
-            if response.status_code < 500:
-                return (url, True, latency)
-            else:
-                return (url, False, 0.0)
-        except Exception:
-            return (url, False, 0.0)
-            
-    except Exception:
-        return (url, False, 0.0)
-    finally:
-        if proc:
-            try:
+                _running_processes.append(proc)
+
+            # Ждём порт (оптимизировано - меньше timeout)
+            if not _wait_for_port(port, timeout=1.0):
                 proc.terminate()
                 try:
                     proc.wait(timeout=1)
                 except subprocess.TimeoutExpired:
                     proc.kill()
-                    proc.wait(timeout=1)
+                with _process_lock:
+                    if proc in _running_processes:
+                        _running_processes.remove(proc)
+                try:
+                    os.unlink(config_path)
+                except Exception:
+                    pass
+                return (url, False, 0.0)
+
+            try:
+                os.unlink(config_path)
             except Exception:
                 pass
-            with _process_lock:
-                if proc in _running_processes:
-                    _running_processes.remove(proc)
+
+            # Тест через SOCKS - оптимизированная конфигурация
+            session = requests.Session()
+            session.proxies = {'http': f'socks5h://127.0.0.1:{port}', 'https': f'socks5h://127.0.0.1:{port}'}
+            # Упрощённая retry стратегия - без backoff для ускорения
+            retry = Retry(total=0, status_forcelist=())  # Нет повторов
+            adapter = HTTPAdapter(max_retries=retry, pool_connections=1, pool_maxsize=1)
+            session.mount('http://', adapter)
+            session.mount('https://', adapter)
+
+            try:
+                start = time.perf_counter()
+                response = session.get(target_url, timeout=timeout, allow_redirects=False)
+                latency = (time.perf_counter() - start) * 1000
+
+                # Считаем успешным если статус < 500 (204, 301, 302 - OK)
+                if response.status_code < 500:
+                    return (url, True, latency)
+                else:
+                    return (url, False, 0.0)
+            except Exception:
+                return (url, False, 0.0)
+
+        except Exception:
+            return (url, False, 0.0)
+        finally:
+            if proc:
+                try:
+                    proc.terminate()
+                    try:
+                        proc.wait(timeout=1)
+                    except subprocess.TimeoutExpired:
+                        proc.kill()
+                        proc.wait(timeout=1)
+                except Exception:
+                    pass
+                with _process_lock:
+                    if proc in _running_processes:
+                        _running_processes.remove(proc)
 
 
 def test_batch(
     urls: List[str],
     xray_path: str,
-    concurrency: int = 150,
+    concurrency: int = 90,
     timeout: float = 6.0,
     required_count: int = None,
-    max_ping_ms: float = None
+    max_ping_ms: float = None,
+    target_url: str = "https://www.google.com/generate_204"
 ) -> List[Tuple[str, bool, float]]:
-    """Тестирует батч конфигов конкурентно. Оптимизировано для скорости.
-    
+    """Тестирует батч конфигов конкурентно. Задачи подаются батчами, чтобы stop_flag реально останавливал работу.
+
     Args:
         urls: Список URL для тестирования
         xray_path: Путь к Xray бинарнику
-        concurrency: Количество одновременных потоков (по умолчанию 150 для скорости)
-        timeout: Таймаут для каждого теста в секундах (оптимизирован на 6s)
-        required_count: Количество рабочих конфигов с подходящим пингом после которого остановить тестирование.
-                       Если None - тестирует все.
-        max_ping_ms: Максимальный пинг. Используется для подсчёта подходящих конфигов.
-                    Если None - не фильтрует по пингу.
+        concurrency: Количество одновременных потоков (по умолчанию 90)
+        timeout: Таймаут для каждого теста в секундах
+        required_count: Количество рабочих конфигов с подходящим пингом, после которого остановиться.
+                       Если None — тестирует все.
+        max_ping_ms: Максимальный пинг. Если None — не фильтрует по пингу.
     """
     if not urls:
         return []
-    
+
     results = []
     results_lock = threading.Lock()
-    completed = [0]
-    last_batch_start = [0]  # Отслеживаем начало батча из 20
+    completed = 0
+    last_batch_start = 0
     stop_flag = threading.Event()
-    
+    BATCH_SIZE = concurrency * 2  # подаём с запасом 2x от concurrency
+
     print(f"Тестирование {len(urls)} конфигов (concurrency={concurrency}, timeout={timeout}s)...")
-    
-    def test_with_progress(url: str) -> Tuple[str, bool, float]:
-        if stop_flag.is_set():
-            return (url, False, 0.0)
-        result = _test_single_config(url, xray_path, timeout)
-        return result
-    
+
     with ThreadPoolExecutor(max_workers=concurrency) as executor:
-        futures = {executor.submit(test_with_progress, url): url for url in urls}
         try:
-            for future in as_completed(futures):
+            # Разбиваем на батчи и подаём по мере необходимости
+            for batch_start in range(0, len(urls), BATCH_SIZE):
                 if stop_flag.is_set():
                     break
-                try:
-                    result = future.result(timeout=timeout + 5)
-                    with results_lock:
-                        results.append(result)
-                        # Проверяем достаточно ли найдено рабочих конфигов с подходящим пингом
-                        completed[0] += 1
-                        count = completed[0]
-                        
-                        # Считаем отдельно рабочие и подходящие конфиги
-                        all_working_count = sum(1 for r in results if r[1])  # Все рабочие
-                        
+
+                batch = urls[batch_start:batch_start + BATCH_SIZE]
+                futures = {
+                    executor.submit(_test_single_config, url, xray_path, timeout, target_url): url
+                    for url in batch
+                    if not stop_flag.is_set()
+                }
+
+                for future in as_completed(futures):
+                    if stop_flag.is_set():
+                        future.cancel()
+                        continue
+                    try:
+                        result = future.result(timeout=timeout + 5)
+                        with results_lock:
+                            results.append(result)
+                            completed += 1
+                            count = completed
+
+                        # Считаем рабочие и подходящие конфиги
+                        all_working_count = sum(1 for r in results if r[1])
                         if max_ping_ms is not None:
-                            # Подходящие - рабочие с подходящим пингом
                             suitable_count = sum(1 for r in results if r[1] and r[2] <= max_ping_ms)
                         else:
                             suitable_count = all_working_count
-                        
-                        # Выводим прогресс ТОЛЬКО если ещё не достаточно конфигов
-                        if not stop_flag.is_set():
-                            if count % 20 == 0 or count == len(urls):
-                                # Получаем минимальный пинг из последних 20 проверенных
-                                batch_start = last_batch_start[0]
-                                batch_results = results[batch_start:count]
-                                batch_pings = [r[2] for r in batch_results if r[1]]  # Пинги рабочих
-                                min_ping = min(batch_pings) if batch_pings else 0
-                                
-                                # Выводим: Working (все) vs Suitable (подходящие по пингу)
-                                if max_ping_ms is not None:
-                                    print(f"Progress: {count}/{len(urls)} - Working: {all_working_count} - Suitable: {suitable_count} - Min ping: {min_ping:.0f}ms")
-                                else:
-                                    print(f"Progress: {count}/{len(urls)} - Working: {all_working_count} - Min ping: {min_ping:.0f}ms")
-                                
-                                last_batch_start[0] = count
-                        
-                        # Если найдено достаточно конфигов с подходящим пингом - останавливаем
+
+                        # Выводим прогресс
+                        if not stop_flag.is_set() and (count % 20 == 0 or count == len(urls)):
+                            batch_results = results[last_batch_start:count]
+                            batch_pings = [r[2] for r in batch_results if r[1]]
+                            min_ping = min(batch_pings) if batch_pings else 0
+
+                            if max_ping_ms is not None:
+                                print(f"Progress: {count}/{len(urls)} - Working: {all_working_count} - Suitable: {suitable_count} - Min ping: {min_ping:.0f}ms")
+                            else:
+                                print(f"Progress: {count}/{len(urls)} - Working: {all_working_count} - Min ping: {min_ping:.0f}ms")
+
+                            last_batch_start = count
+
+                        # Если найдено достаточно — останавливаем
                         if required_count and suitable_count >= required_count:
-                            # Получаем минимальный пинг из последних 20 для финального вывода
                             batch_pings = [r[2] for r in results if r[1]]
                             min_ping = min(batch_pings) if batch_pings else 0
-                            
+
                             if max_ping_ms is not None:
                                 print(f"Progress: {count}/{len(urls)} - Working: {all_working_count} - Suitable: {suitable_count} - Min ping: {min_ping:.0f}ms")
                             else:
                                 print(f"Progress: {count}/{len(urls)} - Working: {all_working_count} - Min ping: {min_ping:.0f}ms")
                             stop_flag.set()
-                except Exception:
-                    with results_lock:
-                        results.append((futures[future], False, 0.0))
+                            break
+
+                    except Exception:
+                        with results_lock:
+                            results.append((futures[future], False, 0.0))
+
         except KeyboardInterrupt:
             print("\n[!] Прерывание...")
             stop_flag.set()
-            # Даем потокам время завершиться
             time.sleep(0.2)
         finally:
             stop_flag.set()
-            # Корректно завершаем executor
             try:
                 executor.shutdown(wait=True, cancel_futures=True)
             except Exception:
                 pass
-            # Принудительная очистка процессов
             time.sleep(0.3)
             _cleanup_all()
-    
+
     # Сортируем по latency (fastest first)
     working = [(url, success, latency) for url, success, latency in results if success]
     working.sort(key=lambda x: x[2])
-    
+
     all_working = len(working)
     suitable = sum(1 for url, success, latency in working if latency <= max_ping_ms) if max_ping_ms else all_working
-    
+
     if max_ping_ms is not None:
         print(f"Готово: {suitable}/{all_working} подходящих из рабочих")
     else:
         print(f"Готово: {all_working}/{len(urls)} рабочих")
-    
+
     return working
