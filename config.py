@@ -67,7 +67,7 @@ TASKS = [
         "profile_title": "arqVPN Free | Telegram",
         "type": "mtproto",
         "target_url": "https://core.telegram.org",
-        "max_ping_ms": 200,
+        "max_ping_ms": 1500,
         "required_count": 10
     }
 ]

@@ -1138,8 +1138,10 @@ class ArcParseGUI:
 
             if not user_stopped:
                 self.log("Все тесты завершены ✓", "success")
-                self.merge_vpn_configs()
                 task_names = [t['name'] for t in tasks]
+                vpn_tasks_names = {'Base VPN', 'Bypass VPN'}
+                if any(t['name'] in vpn_tasks_names for t in tasks):
+                    self.merge_vpn_configs()
                 self._ask_update_sub_or_open_folder(tested_tasks=task_names)
             else:
                 self.progress_label.config(text="Остановлено")
