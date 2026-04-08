@@ -1,4 +1,6 @@
 curl_cffi>=0.15.0b3
 requests>=2.28.0
 PySocks>=1.7.1
+# Для MTProto нужна одна из библиотек (pycryptodome предпочтительнее, cryptography как fallback)
 pycryptodome>=3.15.0
+cryptography>=3.4.0

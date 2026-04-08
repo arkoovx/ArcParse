@@ -181,6 +181,12 @@ def _create_xray_config(url: str, socks_port: int) -> Optional[Dict]:
         # Упрощённый парсинг VMess
         try:
             encoded = url.replace('vmess://', '').strip()
+            # Удаляем фрагмент (#...) из URL перед декодированием base64
+            if '#' in encoded:
+                encoded = encoded.split('#')[0]
+            # Также удаляем любые пробелы и переносы строк
+            encoded = encoded.replace('\n', '').replace('\r', '').replace(' ', '')
+            
             padding = 4 - len(encoded) % 4
             if padding != 4:
                 encoded += '=' * padding

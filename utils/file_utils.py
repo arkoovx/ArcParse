@@ -47,6 +47,8 @@ def load_from_local_file(path: str) -> str:
 
 def split_config_file(content: str, max_lines_per_file: int = 300) -> List[str]:
     """Splits a config file content into smaller parts."""
+    # Нормализуем окончания строк
+    content = content.replace('\r\n', '\n').replace('\r', '\n')
     lines = content.strip().split('\n')
     # Remove empty lines
     lines = [line.strip() for line in lines if line.strip()]
@@ -441,8 +443,12 @@ def filter_secure_configs(configs: List[str]) -> List[str]:
 
 def prepare_config_content(content: str) -> List[str]:
     """Prepares and normalizes config content by separating glued configs."""
+    # Нормализуем окончания строк (Windows \r\n -> Unix \n)
+    content = content.replace('\r\n', '\n').replace('\r', '\n')
+    
     # Add newlines before known protocol prefixes that might be glued to previous lines
-    content = re.sub(r'(vmess|vless|trojan|ss|ssr|tuic|hysteria|hysteria2|hy2)://', r'\n\1://', content)
+    # Важно: hysteria2 и ssr должны идти перед hysteria и ss, чтобы избежать частичного совпадения
+    content = re.sub(r'(vmess|vless|trojan|ssr|ss|hysteria2|hysteria|hy2|tuic)://', r'\n\1://', content)
     lines = content.splitlines()
     # Filter out empty lines, comments, and non-VPN config lines
     configs = []

@@ -25,36 +25,71 @@ def clean_config_content(content: str) -> str:
     Очищает контент конфигов:
     - Заменяет HTML-сущности (&amp; -> &, &lt; -> <, и т.д.)
     - Склеивает разорванные строки конфигов
+    - Разделяет склеенные конфиги (когда несколько URL соединены без переноса)
+    - Корректно обрабатывает \r\n (Windows) и \n (Unix) окончания строк
     """
+    # Нормализуем окончания строк (Windows \r\n -> Unix \n)
+    content = content.replace('\r\n', '\n').replace('\r', '\n')
+
     # Заменяем HTML-сущности
     content = content.replace('&amp;', '&')
     content = content.replace('&lt;', '<')
     content = content.replace('&gt;', '>')
     content = content.replace('&quot;', '"')
     content = content.replace('&#39;', "'")
-    
-    # Склеиваем разорванные строки
+
+    # Склеиваем разорванные строки и разделяем склеенные конфиги
     lines = content.split('\n')
     cleaned_lines = []
     current_line = ''
-    
-    config_start_pattern = re.compile(r'^(vless|vmess|trojan|ss|ssr|hysteria|hy2|tuic|#|profile-)')
-    
+
+    # Важно: hysteria2 должен идти перед hysteria, чтобы избежать частичного совпадения
+    config_start_pattern = re.compile(r'(vless|vmess|trojan|ssr|ss|hysteria2|hy2|hysteria|tuic)://')
+
     for line in lines:
         stripped = line.strip()
         if not stripped:
             continue
-            
-        if config_start_pattern.match(stripped):
+
+        # Проверяем, содержит ли строка начало нового конфига
+        matches = list(config_start_pattern.finditer(stripped))
+        
+        if len(matches) > 1:
+            # Если есть накопленная строка - сохраняем
             if current_line:
                 cleaned_lines.append(current_line)
-            current_line = stripped
+                current_line = ''
+            
+            # Разделяем склеенные конфиги
+            for i, match in enumerate(matches):
+                start = match.start()
+                if i + 1 < len(matches):
+                    end = matches[i + 1].start()
+                    cleaned_lines.append(stripped[start:end])
+                else:
+                    # Последний матч - начинаем новую накопленную строку
+                    current_line = stripped[start:]
+        elif len(matches) == 1:
+            match = matches[0]
+            if match.start() == 0:
+                # Строка начинается с конфига
+                if current_line:
+                    cleaned_lines.append(current_line)
+                current_line = stripped
+            else:
+                # Конфиг в середине строки - это продолжение + новый конфиг
+                current_line += stripped[:match.start()]
+                if current_line.strip():
+                    cleaned_lines.append(current_line.strip())
+                current_line = stripped[match.start():]
         else:
+            # Это продолжение предыдущей строки - склеиваем
             current_line += stripped
-    
+
+    # Не забываем последнюю строку
     if current_line:
         cleaned_lines.append(current_line)
-    
+
     return '\n'.join(cleaned_lines)
 
 
