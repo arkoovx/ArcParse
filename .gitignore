@@ -24,3 +24,6 @@ rawconfigs/
 # OS
 .DS_Store
 Thumbs.db
+
+# Server
+server/
