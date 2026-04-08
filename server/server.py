@@ -8,6 +8,7 @@ import uuid
 import secrets
 import os
 import logging
+from logging.handlers import RotatingFileHandler
 from datetime import datetime
 from contextlib import contextmanager
 
@@ -32,14 +33,16 @@ os.makedirs(DATA_DIR, exist_ok=True)
 os.makedirs(LOGS_DIR, exist_ok=True)
 
 # ─── Логирование ───────────────────────────────────────────────
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(message)s",
-    handlers=[
-        logging.FileHandler(os.path.join(LOGS_DIR, "server.log"), encoding="utf-8"),
-        logging.StreamHandler(),
-    ],
+log_file = os.path.join(LOGS_DIR, "server.log")
+file_handler = RotatingFileHandler(
+    log_file, maxBytes=5 * 1024 * 1024, backupCount=3, encoding="utf-8"
 )
+file_handler.setFormatter(logging.Formatter("%(asctime)s [%(levelname)s] %(message)s"))
+
+console_handler = logging.StreamHandler()
+console_handler.setFormatter(logging.Formatter("%(asctime)s [%(levelname)s] %(message)s"))
+
+logging.basicConfig(level=logging.INFO, handlers=[file_handler, console_handler])
 logger = logging.getLogger("arqsubserver")
 
 # ─── БД ────────────────────────────────────────────────────────

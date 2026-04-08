@@ -200,6 +200,24 @@ class ArcParseGUI:
             else:
                 self.auth_btn.label.config(text="Войти")
 
+    def _animate_loading(self):
+        """Анимация загрузки — пульсирующие точки."""
+        if not hasattr(self, '_auth_loading_text'):
+            return
+        dots = "." * (self._auth_loading_dots % 4)
+        self.auth_btn.label.config(
+            text=f"{self._auth_loading_text}{dots}",
+            fg=TEXT_DIM
+        )
+        self._auth_loading_dots += 1
+        if self.auth_btn._disabled:
+            self.root.after(500, self._animate_loading)
+
+    def _stop_loading_animation(self):
+        """Остановить анимацию загрузки."""
+        if hasattr(self, '_auth_loading_text'):
+            delattr(self, '_auth_loading_text')
+
     def _do_auth(self):
         username = self.login_user.get().strip()
         password = self.login_pass.get()
@@ -212,20 +230,29 @@ class ArcParseGUI:
             messagebox.showerror("Ошибка", "Пароль минимум 6 символов")
             return
 
+        # Проверка доступности сервера
         self.auth_btn._disabled = True
-        if self.auth_mode.get() == "register":
-            self.auth_btn.label.config(text="Регистрация...", fg=TEXT_DIM)
-        else:
-            self.auth_btn.label.config(text="Подключение...", fg=TEXT_DIM)
+        self._auth_loading_dots = 0
+        self._auth_loading_text = "Регистрация" if self.auth_mode.get() == "register" else "Подключение"
+        self._animate_loading()
         self.root.update()
 
         def auth_thread():
             try:
+                # Шаг 1 — проверяем что сервер жив
+                if not auth_module.check_server(server):
+                    self.root.after(0, lambda: self._show_auth_error(
+                        "Сервер недоступен. Проверьте подключение и попробуйте позже."
+                    ))
+                    return
+
+                # Шаг 2 — авторизация
                 if self.auth_mode.get() == "register":
                     result = auth_module.register(username, password, server)
                 else:
                     result = auth_module.login(username, password, server)
                 self.root.after(0, lambda: self._on_auth_success(result))
+
             except auth_module.AuthError as exc:
                 err = str(exc)
                 self.root.after(0, lambda: self._show_auth_error(err))
@@ -236,6 +263,7 @@ class ArcParseGUI:
         threading.Thread(target=auth_thread, daemon=True).start()
 
     def _show_auth_error(self, msg):
+        self._stop_loading_animation()
         self.auth_btn._disabled = False
         mode = self.auth_mode.get()
         self.auth_btn.label.config(text="Войти" if mode == "login" else "Зарегистрироваться",
@@ -243,6 +271,7 @@ class ArcParseGUI:
         messagebox.showerror("Ошибка", msg)
 
     def _on_auth_success(self, result):
+        self._stop_loading_animation()
         self.login_frame.destroy()
         self._show_main_app()
 
@@ -252,29 +281,29 @@ class ArcParseGUI:
         self.current_user = session["username"] if session else None
 
         # ─── Верх ──────────────────────────────────────────────
-        top = tk.Frame(self.root, bg=BG)
-        top.pack(fill=tk.X, padx=24, pady=(16, 8))
+        self.top_frame = tk.Frame(self.root, bg=BG)
+        self.top_frame.pack(fill=tk.X, padx=24, pady=(16, 8))
 
-        tk.Label(top, text="arqParse", bg=BG, fg=TEXT,
+        tk.Label(self.top_frame, text="arqParse", bg=BG, fg=TEXT,
                  font=("Segoe UI", 24, "bold")).pack(anchor=tk.W)
 
-        status_row = tk.Frame(top, bg=BG)
+        status_row = tk.Frame(self.top_frame, bg=BG)
         status_row.pack(fill=tk.X, pady=(4, 0))
 
         if self.current_user:
             tk.Label(status_row, text=f"👤  {self.current_user}", bg=BG,
-                     fg=TEXT_DIM, font=("Segoe UI", 10)).pack(side=tk.LEFT)
+                     fg=TEXT_DIM, font=("Segoe UI", 10)).pack(side=tk.LEFT, padx=(8, 0))
 
-            _Btn(status_row, text="📋  Ссылка подписки", bg_color=BG, fg_color=ACCENT_LG,
+            _Btn(status_row, text="📋  Ссылка", bg_color=BG, fg_color=ACCENT_LG,
                  font=("Segoe UI", 9), active_bg=BG_HOVER,
-                 command=self._copy_sub_url, padx=6, pady=4).pack(side=tk.RIGHT)
+                 command=self._toggle_sub_url, padx=6, pady=4).pack(side=tk.RIGHT)
 
             _Btn(status_row, text="Выйти", bg_color=BG, fg_color=TEXT_DIM,
                  font=("Segoe UI", 9), active_bg=BG_HOVER,
                  command=self._do_logout, padx=6, pady=4).pack(side=tk.RIGHT, padx=(0, 4))
 
         # MTProto подсказка
-        mt_row = tk.Frame(top, bg=BG)
+        mt_row = tk.Frame(self.top_frame, bg=BG)
         mt_row.pack(fill=tk.X, pady=(6, 0))
         tk.Label(mt_row, text="MTProto можно добавить в тг через  ", bg=BG,
                  fg=TEXT_MUTED, font=("Segoe UI", 10)).pack(side=tk.LEFT)
@@ -284,6 +313,31 @@ class ArcParseGUI:
         bot_link.bind("<Button-1>", lambda e: webbrowser.open("https://t.me/arqvpn_bot"))
         bot_link.bind("<Enter>", lambda e: bot_link.config(font=("Segoe UI", 10, "bold underline")))
         bot_link.bind("<Leave>", lambda e: bot_link.config(font=("Segoe UI", 10, "bold")))
+
+        # Ссылка подписки (скрыта по умолчанию)
+        self.sub_url_frame = tk.Frame(self.top_frame, bg=BG_INPUT,
+                                       highlightthickness=1, highlightbackground=BORDER)
+        self.sub_url_frame.pack(fill=tk.X, pady=(6, 0))
+        self.sub_url_frame.pack_forget()
+
+        sub_url_content = tk.Frame(self.sub_url_frame, bg=BG_INPUT)
+        sub_url_content.pack(fill=tk.X, padx=8, pady=4)
+
+        tk.Label(sub_url_content, text="Ссылка подписки:", bg=BG_INPUT,
+                 fg=TEXT_MUTED, font=("Segoe UI", 8)).pack(anchor=tk.W)
+        self.sub_url_text = tk.Text(sub_url_content, bg=BG_INPUT, fg=ACCENT_LG,
+                                     font=("Consolas", 9), height=2, wrap=tk.WORD,
+                                     bd=0, highlightthickness=0, cursor="arrow",
+                                     state=tk.DISABLED)
+        self.sub_url_text.pack(fill=tk.X, pady=(2, 0))
+
+        sub_actions = tk.Frame(self.sub_url_frame, bg=BG_INPUT)
+        sub_actions.pack(fill=tk.X, padx=8, pady=(0, 4))
+        _Btn(sub_actions, text="Копировать", bg_color=BG_CARD, fg_color=TEXT_DIM,
+             font=("Segoe UI", 9), active_bg=BG_HOVER,
+             command=self._copy_sub_url, pady=3, padx=8).pack(side=tk.LEFT)
+
+        self._sub_url_visible = False  # Состояние видимости ссылки
 
         # ─── Главная кнопка ────────────────────────────────────
         self.start_btn = _Btn(self.root, text="⚡  Начать тест", bg_color=ACCENT,
@@ -368,8 +422,13 @@ class ArcParseGUI:
         self.progress_label.pack(anchor=tk.W, pady=(4, 0))
 
         # ─── Лог ────────────────────────────────────────────────
-        tk.Label(self.root, text="Журнал событий", bg=BG, fg=TEXT_MUTED,
-                 font=("Segoe UI", 9, "bold")).pack(anchor=tk.W, padx=24, pady=(12, 4))
+        log_hdr = tk.Frame(self.root, bg=BG)
+        log_hdr.pack(fill=tk.X, padx=24, pady=(12, 4))
+        tk.Label(log_hdr, text="Журнал событий", bg=BG, fg=TEXT_MUTED,
+                 font=("Segoe UI", 9, "bold")).pack(side=tk.LEFT)
+        _Btn(log_hdr, text="Очистить", bg_color=BG, fg_color=TEXT_MUTED,
+             font=("Segoe UI", 8), active_bg=BG_HOVER,
+             command=self._clear_log, padx=6, pady=2).pack(side=tk.RIGHT)
 
         log_inner = tk.Frame(self.root, bg=BG, padx=24, pady=4)
         log_inner.pack(fill=tk.BOTH, expand=True)
@@ -399,6 +458,20 @@ class ArcParseGUI:
         self.log("arqParse запущен", "title")
 
     # ─── Кастомный прогресс-бар ─────────────────────────────────
+    def _get_progress_width(self):
+        """Получает актуальную ширину канваса."""
+        w = self.progress_canvas.winfo_width()
+        if w <= 1:
+            # Если ещё не отрисован — форсируем layout
+            self.root.update_idletasks()
+            w = self.progress_canvas.winfo_width()
+        return max(w, 1)
+
+    def _set_progress_bar(self, pct):
+        """Рисует прогресс-бар на заданный процент."""
+        w = self._get_progress_width()
+        self.progress_canvas.coords(self.progress_bar, 0, 0, int(w * pct), 6)
+
     def update_progress(self, current, total, suitable=0, required=0):
         if required > 0:
             pct = min(suitable / required, 1.0)
@@ -409,17 +482,72 @@ class ArcParseGUI:
         else:
             pct = 0
 
-        w = self.progress_canvas.winfo_width()
-        if w <= 1:
-            w = 372
-        self.progress_canvas.coords(self.progress_bar, 0, 0, int(w * pct), 6)
+        self._set_progress_bar(pct)
         self.root.update()
 
+    def _dark_ask(self, title, message):
+        """Диалог в тёмной теме через Toplevel."""
+        result = [None]
+
+        dlg = tk.Toplevel(self.root)
+        dlg.configure(bg=BG)
+
+        w = tk.Frame(dlg, bg=BG, padx=24, pady=18)
+        w.pack(fill=tk.BOTH, expand=True)
+
+        tk.Label(w, text=title, bg=BG, fg=TEXT,
+                 font=("Segoe UI", 13, "bold")).pack(pady=(0, 6))
+        tk.Label(w, text=message, bg=BG, fg=TEXT_DIM,
+                 font=("Segoe UI", 11), wraplength=270,
+                 justify=tk.CENTER).pack(pady=(0, 16))
+
+        br = tk.Frame(w, bg=BG)
+        br.pack(fill=tk.X)
+
+        def _yes():
+            result[0] = True
+            dlg.destroy()
+
+        def _no():
+            result[0] = False
+            dlg.destroy()
+
+        tk.Button(br, text="Отмена", bg=BG_CARD, fg=TEXT_DIM,
+                  activebackground=BG_HOVER, activeforeground=TEXT,
+                  font=("Segoe UI", 10, "bold"), relief=tk.FLAT,
+                  cursor="hand2", command=_no).pack(side=tk.LEFT,
+                                                     fill=tk.X, expand=True, padx=(0, 3))
+        tk.Button(br, text="Да", bg=ACCENT, fg="#ffffff",
+                  activebackground=ACCENT_DK, activeforeground="#ffffff",
+                  font=("Segoe UI", 10, "bold"), relief=tk.FLAT,
+                  cursor="hand2", command=_yes).pack(side=tk.LEFT,
+                                                      fill=tk.X, expand=True, padx=(3, 0))
+
+        # Сначала рисуем, ПОТОМ блокируем
+        dlg.update_idletasks()
+        rw = max(dlg.winfo_reqwidth(), 310)
+        rh = max(dlg.winfo_reqheight(), 150)
+        px = self.root.winfo_x() + (self.root.winfo_width() - rw) // 2
+        py = self.root.winfo_y() + (self.root.winfo_height() - rh) // 2
+        dlg.geometry(f"{rw}x{rh}+{px}+{py}")
+        dlg.update()
+
+        # Grab только после отрисовки
+        dlg.grab_set()
+        self.root.wait_window(dlg)
+        return result[0] if result[0] is not None else False
+
     def _do_logout(self):
-        if messagebox.askyesno("Выход", "Выйти из аккаунта?", parent=self.root):
+        if self._dark_ask("Выход", "Выйти из аккаунта?"):
             auth_module.clear_session()
             self.root.destroy()
             os.execv(sys.executable, [sys.executable] + sys.argv)
+
+    def _clear_log(self):
+        """Очистить журнал событий."""
+        self.log_text.config(state=tk.NORMAL)
+        self.log_text.delete("1.0", tk.END)
+        self.log_text.config(state=tk.DISABLED)
 
     def _copy_sub_url(self):
         try:
@@ -429,6 +557,23 @@ class ArcParseGUI:
             self.log("Ссылка подписки скопирована", "success")
         except Exception as e:
             messagebox.showerror("Ошибка", str(e), parent=self.root)
+
+    def _toggle_sub_url(self):
+        """Показать/скрыть ссылку подписки."""
+        if self._sub_url_visible:
+            self.sub_url_frame.pack_forget()
+            self._sub_url_visible = False
+        else:
+            try:
+                url = auth_module.get_sub_url()
+                self.sub_url_text.config(state=tk.NORMAL)
+                self.sub_url_text.delete("1.0", tk.END)
+                self.sub_url_text.insert("1.0", url)
+                self.sub_url_text.config(state=tk.DISABLED)
+                self.sub_url_frame.pack(fill=tk.X, pady=(6, 0))
+                self._sub_url_visible = True
+            except Exception as e:
+                messagebox.showerror("Ошибка", str(e), parent=self.root)
 
     def toggle_advanced(self):
         self.advanced_open = not self.advanced_open
@@ -480,10 +625,7 @@ class ArcParseGUI:
         threading.Thread(target=self._download_thread, daemon=True).start()
 
     def _set_progress(self, pct):
-        w = self.progress_canvas.winfo_width()
-        if w <= 1:
-            w = 372
-        self.progress_canvas.coords(self.progress_bar, 0, 0, int(w * pct / 100), 6)
+        self._set_progress_bar(pct / 100)
 
     def _download_thread(self):
         try:
@@ -553,7 +695,8 @@ class ArcParseGUI:
             if not user_stopped:
                 self.log("Все тесты завершены ✓", "success")
                 self.merge_vpn_configs()
-                self._ask_update_sub_or_open_folder()
+                task_names = [t['name'] for t in tasks]
+                self._ask_update_sub_or_open_folder(tested_tasks=task_names)
             else:
                 self.progress_label.config(text="Остановлено")
         except Exception as e:
@@ -565,23 +708,36 @@ class ArcParseGUI:
             self.progress_label.config(text="Готово")
 
     # ─── Подписка на сервер ─────────────────────────────────────
-    def _upload_subscription(self):
+    def _upload_subscription(self, tested_tasks=None):
+        """Отправляет на сервер только результаты протестированных задач."""
         if not auth_module.is_logged_in():
             return
 
-        # VPN подписка — только all_top_vpn.txt (Обход + Обычные)
-        vpn_file = os.path.join(RESULTS_DIR, "all_top_vpn.txt")
-        vpn_content = ""
-        if os.path.exists(vpn_file):
-            with open(vpn_file, 'r', encoding='utf-8') as f:
-                vpn_content = f.read().strip()
+        all_task_names = [t['name'] for t in TASKS]
+        if tested_tasks is None:
+            tested_tasks = all_task_names
 
-        # MTProto подписка — отдельно
-        mt_file = os.path.join(RESULTS_DIR, "top_MTProto.txt")
+        vpn_tasks = [t for t in tested_tasks if t in ('Base VPN', 'Bypass VPN')]
+        mt_task = 'Telegram MTProto' in tested_tasks
+
+        vpn_content = ""
         mt_content = ""
-        if os.path.exists(mt_file):
-            with open(mt_file, 'r', encoding='utf-8') as f:
-                mt_content = f.read().strip()
+
+        if vpn_tasks:
+            vpn_file = os.path.join(RESULTS_DIR, "all_top_vpn.txt")
+            if os.path.exists(vpn_file):
+                with open(vpn_file, 'r', encoding='utf-8') as f:
+                    vpn_content = f.read().strip()
+            else:
+                self.log("Файл all_top_vpn.txt не найден — запустите тест VPN", "warning")
+
+        if mt_task:
+            mt_file = os.path.join(RESULTS_DIR, "top_MTProto.txt")
+            if os.path.exists(mt_file):
+                with open(mt_file, 'r', encoding='utf-8') as f:
+                    mt_content = f.read().strip()
+            else:
+                self.log("Файл MTProto не найден — запустите тест MTProto", "warning")
 
         if not vpn_content and not mt_content:
             self.log("Нет результатов для отправки", "info")
@@ -589,51 +745,23 @@ class ArcParseGUI:
 
         def up():
             try:
-                # Отправляем VPN
+                msgs = []
                 if vpn_content:
-                    self.log("Отправка VPN подписки...", "info")
                     auth_module.update_subscription(vpn_content)
-                    self.root.after(0, lambda: self.log("VPN подписка обновлена ✓", "success"))
-
-                # Отправляем MTProto
+                    msgs.append("VPN ✓")
                 if mt_content:
-                    self.log("Отправка MTProto подписки...", "info")
                     auth_module.update_mtproto(mt_content)
-                    self.root.after(0, lambda: self.log("MTProto подписка обновлена ✓", "success"))
-
+                    msgs.append("MTProto ✓")
+                if msgs:
+                    self.root.after(0, lambda: self.log(
+                        f"Подписка обновлена: {', '.join(msgs)}", "success"
+                    ))
             except auth_module.AuthError as e:
                 self.root.after(0, lambda: self.log(f"Ошибка авторизации: {e}", "error"))
             except Exception as e:
                 self.root.after(0, lambda: self.log(f"Ошибка отправки: {e}", "error"))
 
         threading.Thread(target=up, daemon=True).start()
-
-    # ─── Одиночный тест ─────────────────────────────────────────
-    def start_single_test(self, task):
-        if self.is_running:
-            messagebox.showwarning("Внимание", "Тест уже запущен", parent=self.root)
-            return
-        self.is_running = True
-        self.stop_flag = False
-        self.skip_flag = False
-        self._enable_control_buttons(True)
-        self.progress_label.config(text=f"Тест: {task['name']}")
-        self._set_progress(0)
-
-        def tt():
-            try:
-                self.log(f"▶  {task['name']}", "title")
-                self._test_task(task)
-                self.log(f"✓  {task['name']} завершён", "success")
-                self._ask_update_sub_or_open_folder()
-            except Exception as e:
-                self.log(f"Ошибка: {e}", "error")
-            finally:
-                self.is_running = False
-                self._enable_control_buttons(False)
-                self._set_progress(0)
-                self.progress_label.config(text="Готово")
-        threading.Thread(target=tt, daemon=True).start()
 
     # ─── Тест задачи ────────────────────────────────────────────
     def _test_task(self, task):
@@ -705,18 +833,6 @@ class ArcParseGUI:
         except Exception as e:
             messagebox.showerror("Ошибка", str(e), parent=self.root)
 
-    def _get_affected_files(self, task):
-        out = task.get('out_file')
-        if not out:
-            return []
-        affected = [out]
-        if task.get('name', '') in ('Base VPN', 'Bypass VPN'):
-            af = os.path.join(RESULTS_DIR, "all_top_vpn.txt")
-            self.merge_vpn_configs()
-            if os.path.exists(af):
-                affected.append(af)
-        return affected
-
     def merge_vpn_configs(self):
         tv = os.path.join(RESULTS_DIR, "top_vpn.txt")
         tb = os.path.join(RESULTS_DIR, "top_bypass.txt")
@@ -748,29 +864,31 @@ class ArcParseGUI:
         except Exception as e:
             self.log(f"Ошибка объединения: {e}", "error")
 
-    def _ask_update_sub_or_open_folder(self):
-        """После теста спрашивает: обновить подписку/GitHub. Если нет — открыть папку."""
-        session = auth_module.get_session()
-        username = session.get("username") if session else None
+    def _ask_update_sub_or_open_folder(self, tested_tasks=None):
+        """После теста спрашивает: обновить подписку/GitHub. Если нет — открыть папку.
+        Вызывается из фонового потока — поэтому используем root.after."""
 
-        if username == "admin":
-            # Админ — обновление в GitHub
-            if messagebox.askyesno("GitHub", "Обновить результаты в репозитории GitHub?",
-                                    parent=self.root):
-                threading.Thread(target=self._push_to_github_thread, daemon=True).start()
+        def _do():
+            session = auth_module.get_session()
+            username = session.get("username") if session else None
+
+            if username == "admin":
+                if self._dark_ask("GitHub", "Обновить результаты в репозитории GitHub?"):
+                    threading.Thread(target=self._push_to_github_thread, daemon=True).start()
+                else:
+                    self.open_results()
+                return
+
+            if not auth_module.is_logged_in():
+                self.open_results()
+                return
+
+            if self._dark_ask("Подписка", "Обновить вашу подписку на сервере?"):
+                self._upload_subscription(tested_tasks=tested_tasks)
             else:
                 self.open_results()
-            return
 
-        # Обычный пользователь — обновление подписки
-        if not auth_module.is_logged_in():
-            self.open_results()
-            return
-
-        if messagebox.askyesno("Подписка", "Обновить вашу подписку на сервере?", parent=self.root):
-            self._upload_subscription()
-        else:
-            self.open_results()
+        self.root.after(0, _do)
 
     def _push_to_github_thread(self):
         try:
