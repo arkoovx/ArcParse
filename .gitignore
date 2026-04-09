@@ -1,0 +1,40 @@
+# Виртуальное окружение
+venv/
+.venv/
+env/
+
+# Python кеш
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyo
+
+# Логи
+*.log
+arcparse_log.txt
+
+# Скачанные сырые конфиги (генерируются автоматически)
+rawconfigs/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Server
+server/
+
+# Qwen
+.qwen/
+
+# Xray бинарники (скачиваются автоматически при запуске)
+bin/xray
+bin/xray.exe
+bin/*.zip
+bin/*.dat
+bin/*.md
+bin/LICENSE
