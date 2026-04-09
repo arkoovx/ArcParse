@@ -212,8 +212,9 @@ def read_mtproto_from_file(filepath: str) -> List[str]:
         for m in pattern.findall(line):
             m = m.strip()
             if m and ('t.me/proxy' in m or 'tg://proxy' in m):
-                # Проверяем что есть обязательные параметры
-                if 'server=' in m and 'port=' in m:
+                # Проверяем что есть обязательные параметры:
+                # без secret ссылка неполная и невалидна для подключения.
+                if 'server=' in m and 'port=' in m and 'secret=' in m:
                     proxies.append(m)
 
     return proxies

@@ -2,7 +2,6 @@
 
 import os
 import sys
-import pytest
 import tempfile
 
 # Добавляем корень проекта в sys.path
@@ -142,5 +141,16 @@ class TestReadMtprotoFromFile:
         try:
             proxies = read_mtproto_from_file(path)
             assert len(proxies) == 2
+        finally:
+            os.unlink(path)
+
+    def test_proxy_without_secret_is_skipped(self):
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False) as f:
+            f.write("https://t.me/proxy?server=1.1.1.1&port=443\n")
+            f.flush()
+            path = f.name
+        try:
+            proxies = read_mtproto_from_file(path)
+            assert proxies == []
         finally:
             os.unlink(path)

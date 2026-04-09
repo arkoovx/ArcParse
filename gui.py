@@ -989,6 +989,78 @@ class ArcParseGUI:
         self.root.wait_window(dlg)
         return result[0] if result[0] is not None else False
 
+    def _dark_retry_cancel(self, title, message):
+        """Диалог 'Повторить/Отмена' в тёмной теме."""
+        result = [False]
+        dlg = tk.Toplevel(self.root)
+        dlg.configure(bg=BG)
+        w = tk.Frame(dlg, bg=BG, padx=24, pady=18)
+        w.pack(fill=tk.BOTH, expand=True)
+
+        tk.Label(
+            w,
+            text=title,
+            bg=BG,
+            fg=TEXT,
+            font=("Segoe UI", 13, "bold")
+        ).pack(pady=(0, 6))
+        tk.Label(
+            w,
+            text=message,
+            bg=BG,
+            fg=TEXT_DIM,
+            font=("Segoe UI", 11),
+            wraplength=320,
+            justify=tk.CENTER
+        ).pack(pady=(0, 16))
+
+        br = tk.Frame(w, bg=BG)
+        br.pack(fill=tk.X)
+
+        def _cancel():
+            result[0] = False
+            dlg.destroy()
+
+        def _retry():
+            result[0] = True
+            dlg.destroy()
+
+        tk.Button(
+            br,
+            text="Отмена",
+            bg=BG_CARD,
+            fg=TEXT_DIM,
+            activebackground=BG_HOVER,
+            activeforeground=TEXT,
+            font=("Segoe UI", 10, "bold"),
+            relief=tk.FLAT,
+            cursor="hand2",
+            command=_cancel
+        ).pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 3))
+        tk.Button(
+            br,
+            text="Повторить",
+            bg=ACCENT,
+            fg="#ffffff",
+            activebackground=ACCENT_DK,
+            activeforeground="#ffffff",
+            font=("Segoe UI", 10, "bold"),
+            relief=tk.FLAT,
+            cursor="hand2",
+            command=_retry
+        ).pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(3, 0))
+
+        dlg.update_idletasks()
+        rw = max(dlg.winfo_reqwidth(), 360)
+        rh = max(dlg.winfo_reqheight(), 180)
+        px = self.root.winfo_x() + (self.root.winfo_width() - rw) // 2
+        py = self.root.winfo_y() + (self.root.winfo_height() - rh) // 2
+        dlg.geometry(f"{rw}x{rh}+{px}+{py}")
+        dlg.update()
+        dlg.grab_set()
+        self.root.wait_window(dlg)
+        return result[0]
+
     def _do_logout(self):
         if self._dark_ask("Выход", "Выйти из аккаунта?"):
             auth_module.clear_session()
@@ -1195,6 +1267,17 @@ class ArcParseGUI:
             self.log("Нет результатов для отправки", "info")
             return
 
+        def _ask_retry():
+            """Показывает диалог при сетевой неудаче и при необходимости запускает повтор."""
+            retry = self._dark_retry_cancel(
+                "Обновление подписки",
+                "Обновление не удалось. Возможно, у вас работают белые списки. "
+                "Подключитесь к стабильной сети и повторите попытку",
+            )
+            if retry:
+                # Повторяем тем же сценарием: те же протестированные задачи.
+                self._upload_subscription(tested_tasks=tested_tasks)
+
         def up():
             try:
                 msgs = []
@@ -1211,7 +1294,10 @@ class ArcParseGUI:
             except auth_module.AuthError as e:
                 self.root.after(0, lambda e=e: self.log(f"Ошибка авторизации: {e}", "error"))
             except Exception as e:
-                self.root.after(0, lambda e=e: self.log(f"Ошибка отправки: {e}", "error"))
+                def _on_error(err=e):
+                    self.log(f"Ошибка отправки: {err}", "error")
+                    _ask_retry()
+                self.root.after(0, _on_error)
 
         threading.Thread(target=up, daemon=True).start()
 

@@ -3,7 +3,6 @@
 import os
 import re
 import time
-from datetime import datetime, timedelta
 import requests
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
@@ -130,9 +129,11 @@ def download_file(url: str, filepath: str, max_age_hours: int = 24, force: bool 
 
     try:
         _log(f"Скачивание {os.path.basename(filepath)}...", "info")
-        session = _create_session_with_retries()
-        response = session.get(url, timeout=30, headers={"User-Agent": CHROME_UA})
-        response.raise_for_status()
+        # Используем контекстный менеджер, чтобы сокеты корректно закрывались
+        # даже в случае исключений/таймаутов.
+        with _create_session_with_retries() as session:
+            response = session.get(url, timeout=30, headers={"User-Agent": CHROME_UA})
+            response.raise_for_status()
 
         # Очищаем контент
         cleaned_content = clean_config_content(response.text)
@@ -162,8 +163,18 @@ def download_all_tasks(tasks: list, max_age_hours: int = 24, force: bool = False
         # Поддержка как одного URL, так и списка URL
         urls = task.get('urls', [task.get('url')])
         raw_files = task.get('raw_files', [task.get('raw_file')])
+        pair_count = min(len(urls), len(raw_files))
 
-        for url, filepath in zip(urls, raw_files):
+        # Явно предупреждаем о частично описанной задаче:
+        # zip(urls, raw_files) молча отбрасывает "лишние" элементы.
+        if len(urls) != len(raw_files) and log_func:
+            log_func(
+                f"⚠ {task.get('name', 'Unknown task')}: mismatch urls/raw_files "
+                f"({len(urls)} vs {len(raw_files)}), будет обработано пар: {pair_count}",
+                "warning",
+            )
+
+        for url, filepath in zip(urls[:pair_count], raw_files[:pair_count]):
             if url and filepath:
                 # Проверяем нужно ли скачивать
                 if not force:

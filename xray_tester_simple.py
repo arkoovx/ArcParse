@@ -4,19 +4,18 @@
 """
 
 import os
-import sys
 import json
 import base64
 import subprocess
 import tempfile
 import time
 import socket
-import signal
 import threading
 import atexit
 import itertools
 from typing import List, Tuple, Optional, Dict
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from urllib.parse import parse_qs, unquote
 
 import requests
 from requests.adapters import HTTPAdapter
@@ -95,8 +94,6 @@ def _wait_for_port(port: int, timeout: float = 1.0) -> bool:
 
 def _parse_vless_url(url: str) -> Optional[Dict]:
     """Парсит VLESS URL в outbound конфиг."""
-    from urllib.parse import parse_qs, unquote
-
     try:
         url_part = url.replace('vless://', '', 1)
         if '#' in url_part:
