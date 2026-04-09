@@ -592,7 +592,9 @@ class ArcParseGUI:
     def _on_set_mousewheel(self, event):
         """Прокрутка только когда страница настроек активна."""
         if self._current_page == "settings" and self._set_canvas.winfo_viewable():
-            direction = 3 if event.delta > 0 else -3
+            # На Windows: delta > 0 = колесо к себе (скролл вверх), delta < 0 = от себя (скролл вниз)
+            # yview_scroll(+) = показать более нижний контент (скролл вниз)
+            direction = -3 if event.delta > 0 else 3
             self._set_canvas.yview_scroll(direction, "units")
 
     def _on_set_mousewheel_linux(self, event):
