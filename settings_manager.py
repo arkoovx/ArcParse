@@ -4,6 +4,7 @@ import json
 import os
 
 from config import BASE_DIR, TASKS, CHROME_UA
+from path_manager import normalize_task_paths
 
 SETTINGS_FILE = os.path.join(BASE_DIR, "settings.json")
 
@@ -52,7 +53,8 @@ def save_settings(data):
 
 
 def get_tasks():
-    """Возвращает список задач из настроек (совместимый с config.TASKS формат)."""
+    """Возвращает список задач из настроек (совместимый с config.TASKS формат).
+    Автоматически нормализует пути под текущую ОС."""
     settings = load_settings()
     tasks = []
     for t in settings.get("tasks", []):
@@ -63,7 +65,7 @@ def get_tasks():
             if fname:
                 from config import RAW_CONFIGS_DIR
                 raw_files.append(os.path.join(RAW_CONFIGS_DIR, fname))
-        tasks.append({
+        task = {
             "name": t["name"],
             "urls": t["urls"],
             "raw_files": raw_files,
@@ -73,7 +75,10 @@ def get_tasks():
             "target_url": t.get("target_url", "https://google.com"),
             "max_ping_ms": t.get("max_ping_ms", 9000),
             "required_count": t.get("required_count", 10),
-        })
+        }
+        # Нормализуем пути под текущую ОС
+        task = normalize_task_paths(task)
+        tasks.append(task)
     return tasks
 
 
