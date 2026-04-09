@@ -1,5 +1,9 @@
 @echo off
 chcp 65001 >nul 2>&1
+
+:: Получаем директорию батника как корневую директорию проекта
+set "SCRIPT_DIR=%~dp0"
+
 setlocal enabledelayedexpansion
 
 echo ════════════════════════════════════════════════════════
@@ -7,19 +11,29 @@ echo   arqParse GUI — Запуск
 echo ════════════════════════════════════════════════════════
 echo.
 
+:: Меняем рабочую директорию на директорию скрипта
+cd /d "%SCRIPT_DIR%"
+
 :: 1. Проверка Python
-python --version >nul 2>&1
-if errorlevel 1 (
-    echo [X] Python не найден. Установите Python 3.8+
-    echo     https://www.python.org/downloads/
-    pause
-    exit /b 1
+:: Приоритет: родной Windows Python, затем MSYS2 Python
+where /q py && (
+    set "PYTHON_CMD=py -3"
+    for /f "tokens=2" %%i in ('py -3 --version 2^>^&1') do set PY_VER=%%i
+) || (
+    python --version >nul 2>&1
+    if errorlevel 1 (
+        echo [X] Python не найден. Установите Python 3.8+
+        echo     https://www.python.org/downloads/
+        pause
+        exit /b 1
+    )
+    set "PYTHON_CMD=python"
+    for /f "tokens=2" %%i in ('python --version 2^>^&1') do set PY_VER=%%i
 )
-for /f "tokens=2" %%i in ('python --version 2^>^&1') do set PY_VER=%%i
 echo [+] Python найден: %PY_VER%
 
 :: 2. Проверка Tkinter
-python -c "import tkinter" >nul 2>&1
+%PYTHON_CMD% -c "import tkinter" >nul 2>&1
 if errorlevel 1 (
     echo [X] Tkinter не установлен.
     echo     Переустановите Python с опцией "tcl/tk"
@@ -29,19 +43,36 @@ if errorlevel 1 (
 echo [+] Tkinter установлен
 
 :: 3. Создание venv если нет
-if not exist "venv\Scripts\python.exe" (
+:: Проверяем оба возможных расположения python.exe (Windows и MSYS2 стили)
+set "PYTHON_EXE=%SCRIPT_DIR%venv\Scripts\python.exe"
+if not exist "%PYTHON_EXE%" (
+    set "PYTHON_EXE=%SCRIPT_DIR%venv\bin\python.exe"
+)
+
+if not exist "%PYTHON_EXE%" (
     echo [*] Виртуальное окружение не найдено — создаю...
-    python -m venv venv
+    %PYTHON_CMD% -m venv "%SCRIPT_DIR%venv"
+    
+    :: Проверяем снова после создания
+    if not exist "%SCRIPT_DIR%venv\Scripts\python.exe" (
+        set "PYTHON_EXE=%SCRIPT_DIR%venv\bin\python.exe"
+    ) else (
+        set "PYTHON_EXE=%SCRIPT_DIR%venv\Scripts\python.exe"
+    )
     echo [+] venv создан
 )
 
 :: 4. Установка зависимостей
-if exist "requirements.txt" (
+if exist "%SCRIPT_DIR%requirements.txt" (
     echo [*] Устанавливаю зависимости...
-    call venv\Scripts\python.exe -m pip install --upgrade pip -q 2>nul
-    call venv\Scripts\pip.exe install -r requirements.txt -q 2>nul
+    "%PYTHON_EXE%" -m pip install --upgrade pip -q 2>nul
+    "%PYTHON_EXE%" -m pip install -r "%SCRIPT_DIR%requirements.txt" -q 2>nul
     echo [+] Зависимости готовы
 )
+
+:: 5. Проверка и установка Xray
+echo [*] Проверка Xray бинарника...
+"%PYTHON_EXE%" -c "from setup_xray import ensure_xray; ensure_xray()"
 
 echo.
 echo [+] Всё готово
@@ -49,5 +80,5 @@ echo [^>] Запускаю arqParse GUI...
 echo ════════════════════════════════════════════════════════
 echo.
 
-:: Запуск GUI
-venv\Scripts\python.exe main.py --gui
+:: Запуск GUI с полной спецификацией пути
+"%PYTHON_EXE%" "%SCRIPT_DIR%main.py" --gui

@@ -20,6 +20,7 @@ from parser import read_configs_from_file, read_mtproto_from_file
 from testers import test_xray_configs
 from testers_mtproto import test_mtproto_configs
 from formatting import format_config_name, _url_key
+from setup_xray import ensure_xray
 from ui import (
     print_banner, print_logo, print_header, print_subheader,
     print_success, print_error, print_warning, print_info,
@@ -173,6 +174,17 @@ def main(force_download: bool = False, skip_xray: bool = False, proxy_url: str =
         sys.exit(1)
 
     print_success(f"Скачано файлов: {len(download_results['success'])}")
+
+    # Этап 1.5: Проверка и установка Xray
+    print_header("🔧 ЭТАП 1.5: ПРОВЕРКА XRAY")
+
+    xray_path = ensure_xray()
+    if xray_path:
+        # Обновляем XRAY_BIN на актуальный путь
+        global XRAY_BIN
+        XRAY_BIN = xray_path
+    else:
+        print_warning("Xray не удалось установить. Тестирование Xray конфигов будет пропущено.")
 
     # Этап 2: Настройка прокси
     print_header("🔗 ЭТАП 2: НАСТРОЙКА ПРОКСИ")

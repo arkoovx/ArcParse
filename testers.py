@@ -59,7 +59,9 @@ def test_xray_configs(
             progress_func(current, total)
     
     if not xray_path:
-        xray_path = os.path.join(os.path.dirname(__file__), "bin", "xray")
+        # Используем правильное имя бинарника для текущей ОС
+        xray_name = "xray.exe" if os.name == "nt" else "xray"
+        xray_path = os.path.join(os.path.dirname(__file__), "bin", xray_name)
     
     if not os.path.exists(xray_path):
         _log(f"Xray не найден: {xray_path}", "error")

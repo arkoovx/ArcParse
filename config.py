@@ -1,6 +1,7 @@
 """Конфигурация и настройки задач для arqParse."""
 
 import os
+import sys
 
 # Пути к директориям
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -13,8 +14,10 @@ os.makedirs(RAW_CONFIGS_DIR, exist_ok=True)
 os.makedirs(RESULTS_DIR, exist_ok=True)
 os.makedirs(BIN_DIR, exist_ok=True)
 
-# Путь к Xray
-XRAY_BIN = os.path.join(BIN_DIR, "xray.exe" if os.name == "nt" else "xray")
+# Путь к Xray — всегда используем правильное имя для текущей ОС
+# На Windows: xray.exe, на Linux/macOS: xray
+_xray_name = "xray.exe" if os.name == "nt" else "xray"
+XRAY_BIN = os.path.join(BIN_DIR, _xray_name)
 
 # Задачи для скачивания и тестирования
 # Каждая задача может иметь несколько URL источников (проверяются по порядку)

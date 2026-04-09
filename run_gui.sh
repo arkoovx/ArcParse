@@ -60,10 +60,9 @@ if [ -f "requirements.txt" ]; then
     echo -e "${GREEN}✓${NC} Зависимости готовы"
 fi
 
-# 5. Проверка Xray (необязательно — только для тестирования)
-if [ ! -f "$SCRIPT_DIR/bin/xray" ]; then
-    echo -e "${YELLOW}⚠${NC} bin/xray не найден (нужен только для тестирования конфигов)"
-fi
+# 5. Проверка и установка Xray
+echo -e "${YELLOW}→${NC} Проверка Xray бинарника..."
+"$PYTHON_BIN" -c "from setup_xray import ensure_xray; ensure_xray()"
 
 echo ""
 echo -e "${GREEN}✓${NC} Всё готово"

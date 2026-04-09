@@ -30,3 +30,11 @@ server/
 
 # Qwen
 .qwen/
+
+# Xray бинарники (скачиваются автоматически при запуске)
+bin/xray
+bin/xray.exe
+bin/*.zip
+bin/*.dat
+bin/*.md
+bin/LICENSE

@@ -243,18 +243,12 @@ def test_mtproto_configs(
     weak: List[Tuple[float, str]] = []      # (ping, url)
     total = len(configs)
     processed = [0]
-    debug_count = [0]  # Отладка для первых 5
     lock = threading.Lock()
     local_stop = threading.Event()
 
-    def _debug(msg):
-        if debug_count[0] < 5:
-            debug_count[0] += 1
-            _log(f"[DEBUG] {msg}", "warning")
-
     # ─── ЭТАП 1: Основной прогон ────────────────────────────────────────
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
-        future_map = {executor.submit(_test_single_mtproto_fast, cfg, 2.0, _debug): cfg for cfg in configs}
+        future_map = {executor.submit(_test_single_mtproto_fast, cfg, 2.0, None): cfg for cfg in configs}
 
         for future in as_completed(future_map):
             if local_stop.is_set() or (stop_flag and stop_flag.is_set()):
@@ -294,7 +288,7 @@ def test_mtproto_configs(
     if weak and len(strong) < required_count:
         _log(f"Перепроверка {len(weak)} WEAK прокси (STRONG={len(strong)} < {required_count})...", "info")
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
-            future_weak = {executor.submit(_test_single_mtproto_fast, u, 2.0, _debug): (p, u) for p, u in weak}
+            future_weak = {executor.submit(_test_single_mtproto_fast, u, 2.0, None): (p, u) for p, u in weak}
             for future in as_completed(future_weak):
                 try:
                     new_status, new_ping = future.result()

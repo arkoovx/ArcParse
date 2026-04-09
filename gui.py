@@ -102,6 +102,10 @@ class ArcParseGUI:
         self._settings = load_settings()
         self._tasks = get_tasks()
 
+        # ─── Проверка и установка Xray ─────────────────────────
+        from setup_xray import ensure_xray
+        ensure_xray()
+
         # ─── Навигация ─────────────────────────────────────────
         self._current_page = None
         self._pages = {}
