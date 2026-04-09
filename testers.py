@@ -54,9 +54,9 @@ def test_xray_configs(
         if log_func:
             log_func(msg, tag)
     
-    def _progress(current, total):
+    def _progress(current, total, suitable=0, required=0):
         if progress_func:
-            progress_func(current, total)
+            progress_func(current, total, suitable, required)
     
     if not xray_path:
         # Используем правильное имя бинарника для текущей ОС
@@ -108,7 +108,7 @@ def test_xray_configs(
     working_configs = [(url, latency) for url, success, latency in results if success and latency <= max_ping_ms]
     
     # Обновляем прогресс
-    _progress(len(results), len(configs))
+    _progress(len(results), len(configs), len(working_configs), required_count or 0)
     
     # Сортируем по пингу
     working_configs.sort(key=lambda x: x[1])
@@ -116,13 +116,16 @@ def test_xray_configs(
     # Возвращаем результаты в зависимости от контекста
     if out_file is not None:
         # GUI режим - сохраняем и возвращаем статистику
+        # test_batch возвращает ТОЛЬКО успешные конфиги, поэтому:
+        working = len(results)
         passed = len(working_configs[:required_count])
-        failed = len([x for x in results if not x[1] or x[2] > max_ping_ms])
-        working = len([x for x in results if x[1]])
+        failed = len(configs) - working
         
         # Сохраняем результаты с форматированными именами
         if working_configs:
-            os.makedirs(os.path.dirname(out_file), exist_ok=True)
+            dir_name = os.path.dirname(out_file)
+            if dir_name:
+                os.makedirs(dir_name, exist_ok=True)
             with open(out_file, 'w', encoding='utf-8') as f:
                 f.write(f"#profile-title: {profile_title or 'arqVPN'}\n")
                 f.write("#profile-update-interval: 48\n")

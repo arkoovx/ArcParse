@@ -83,12 +83,10 @@ def _wait_for_port(port: int, timeout: float = 1.0) -> bool:
     check_interval = 0.01  # Проверяем каждые 10ms
     while time.time() - start < timeout:
         try:
-            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            sock.settimeout(0.05)  # Быстрый timeout на сокет
-            result = sock.connect_ex(('127.0.0.1', port))
-            sock.close()
-            if result == 0:
-                return True
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+                sock.settimeout(0.05)  # Быстрый timeout на сокет
+                if sock.connect_ex(('127.0.0.1', port)) == 0:
+                    return True
         except Exception:
             pass
         time.sleep(check_interval)
@@ -212,16 +210,54 @@ def _create_xray_config(url: str, socks_port: int) -> Optional[Dict]:
                     "security": 'tls' if data.get('tls') == 'tls' else 'none'
                 }
             }
+            if data.get('tls') == 'tls':
+                outbound["streamSettings"]["tlsSettings"] = {
+                    "serverName": data.get('sni', data.get('add', ''))
+                }
         except Exception:
             return None
     elif protocol == 'trojan':
         try:
             url_part = url.replace('trojan://', '', 1).split('#')[0]
-            if '?' in url_part:
-                url_part = url_part.split('?')[0]
+            query_part = url_part.split('?', 1)[1] if '?' in url_part else ''
+            url_part = url_part.split('?')[0]
+            params = parse_qs(query_part)
+
             password, host_port = url_part.rsplit('@', 1)
             hostname, port_str = host_port.rsplit(':', 1)
-            
+
+            security = params.get('security', ['tls'])[0]
+            transport = params.get('type', ['tcp'])[0]
+            sni = params.get('sni', [hostname])[0]
+
+            stream_settings = {
+                "network": transport,
+                "security": security
+            }
+
+            if security == 'tls':
+                stream_settings["tlsSettings"] = {
+                    "serverName": sni,
+                    "fingerprint": params.get('fp', ['chrome'])[0]
+                }
+            elif security == 'reality':
+                stream_settings["realitySettings"] = {
+                    "serverName": sni,
+                    "fingerprint": params.get('fp', ['chrome'])[0],
+                    "publicKey": params.get('pbk', [''])[0],
+                    "shortId": params.get('sid', [''])[0]
+                }
+
+            if transport == 'ws':
+                stream_settings["wsSettings"] = {
+                    "path": unquote(params.get('path', ['/'])[0]),
+                    "headers": {"Host": unquote(params.get('host', [hostname])[0])}
+                }
+            elif transport == 'grpc':
+                stream_settings["grpcSettings"] = {
+                    "serviceName": unquote(params.get('serviceName', [''])[0])
+                }
+
             outbound = {
                 "tag": "proxy",
                 "protocol": "trojan",
@@ -232,33 +268,39 @@ def _create_xray_config(url: str, socks_port: int) -> Optional[Dict]:
                         "password": password
                     }]
                 },
-                "streamSettings": {
-                    "network": "tcp",
-                    "security": "tls",
-                    "tlsSettings": {"serverName": hostname}
-                }
+                "streamSettings": stream_settings
             }
         except Exception:
             return None
     elif protocol == 'ss':
         try:
             url_part = url.replace('ss://', '', 1).split('#')[0]
-            # Пробуем base64 decode
-            try:
+            # SIP002: ss://method:pass@host:port или ss://BASE64@host:port
+            if '@' in url_part:
+                userinfo, server_part = url_part.rsplit('@', 1)
+                hostname, port_str = server_part.rsplit(':', 1)
+                port = int(port_str.rstrip('/'))
+
+                if ':' not in userinfo:
+                    # base64-encoded userinfo (base64 никогда не содержит ':')
+                    decoded_ui = base64.urlsafe_b64decode(userinfo + '==').decode('utf-8', errors='ignore')
+                    method, password = decoded_ui.split(':', 1) if ':' in decoded_ui else (decoded_ui, '')
+                else:
+                    # plain text method:password
+                    method, password = userinfo.split(':', 1)
+            else:
+                # Legacy: всё в base64
                 padding = 4 - len(url_part) % 4
                 if padding != 4:
                     url_part += '=' * padding
                 decoded = base64.urlsafe_b64decode(url_part).decode('utf-8', errors='ignore')
-                if '@' in decoded:
-                    userinfo, server = decoded.rsplit('@', 1)
-                    method, password = userinfo.split(':', 1) if ':' in userinfo else (userinfo, '')
-                    hostname, port_str = server.rsplit(':', 1)
-                    port = int(port_str)
-                else:
+                if '@' not in decoded:
                     return None
-            except Exception:
-                return None
-            
+                userinfo, server = decoded.rsplit('@', 1)
+                method, password = userinfo.split(':', 1) if ':' in userinfo else (userinfo, '')
+                hostname, port_str = server.rsplit(':', 1)
+                port = int(port_str)
+
             outbound = {
                 "tag": "proxy",
                 "protocol": "shadowsocks",
@@ -504,8 +546,7 @@ def test_batch(
                                 _log(f"Прогресс: {count}/{len(urls)} — Рабочих: {all_working_count} — Мин. пинг: {min_ping:.0f}мс", "info")
                             _log(f"Найдено достаточно конфигов ({required_count}), остановка", "success")
                             internal_stop.set()
-                            if stop_flag:
-                                stop_flag.set()
+                            # stop_flag НЕ трогаем — required_count это штатное завершение, не пользовательский стоп
                             break
 
                     except Exception:
@@ -519,8 +560,7 @@ def test_batch(
                 stop_flag.set()
         finally:
             internal_stop.set()
-            if stop_flag:
-                stop_flag.set()
+            # stop_flag НЕ трогаем — его должен сбрасывать/ставить только вызывающий код
             # Отменяем ещё не начавшиеся futures и не ждём завершённые
             try:
                 executor.shutdown(wait=False, cancel_futures=True)

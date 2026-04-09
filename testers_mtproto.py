@@ -315,20 +315,24 @@ def test_mtproto_configs(
 
     # ── GUI-режим ────────────────────────────────────────────────────────
     if out_file is not None:
-        working = len(strong) + len(weak)
+        # strong уже включает upgraded, still_weak — weak без upgrade
+        working = len(strong) + len(still_weak)
         passed = len(final)
         failed = processed[0] - working
 
         if final:
             try:
-                os.makedirs(os.path.dirname(out_file), exist_ok=True)
+                dir_name = os.path.dirname(out_file)
+                if dir_name:
+                    os.makedirs(dir_name, exist_ok=True)
                 with open(out_file, 'w', encoding='utf-8') as f:
                     f.write(f"#profile-title: {profile_title or 'arqVPN MTProto'}\n")
                     f.write("#profile-update-interval: 48\n")
                     f.write("#support-url: https://t.me/arqhub\n\n")
                     for url, ping_ms in final:
                         f.write(f"{url}\n")
-                strong_in_final = sum(1 for u, _ in final if any(u == su for _, su in strong))
+                strong_urls = {su for _, su in strong}
+                strong_in_final = sum(1 for u, _ in final if u in strong_urls)
                 _log(f"✓ Сохранено {passed} конфигов (STRONG: {strong_in_final}, WEAK: {weak_added}) в {out_file}", "success")
             except Exception as e:
                 _log(f"Ошибка сохранения: {e}", "error")

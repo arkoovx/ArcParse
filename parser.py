@@ -205,17 +205,15 @@ def read_mtproto_from_file(filepath: str) -> List[str]:
     if current_line:
         cleaned_lines.append(current_line)
 
-    content = '\n'.join(cleaned_lines)
+    # Находим все MTProto ссылки сразу в cleaned_lines без промежуточного join
+    pattern = re.compile(r'(https://t\.me/proxy\?[^\s]+|tg://proxy[^\s]+)')
 
-    # Находим все MTProto ссылки
-    pattern = r'(https://t\.me/proxy\?[^\s]+|tg://proxy[^\s]+)'
-    matches = re.findall(pattern, content)
-
-    for match in matches:
-        line = match.strip()
-        if line and ('t.me/proxy' in line or 'tg://proxy' in line):
-            # Проверяем что есть обязательные параметры
-            if 'server=' in line and 'port=' in line:
-                proxies.append(line)
+    for line in cleaned_lines:
+        for m in pattern.findall(line):
+            m = m.strip()
+            if m and ('t.me/proxy' in m or 'tg://proxy' in m):
+                # Проверяем что есть обязательные параметры
+                if 'server=' in m and 'port=' in m:
+                    proxies.append(m)
 
     return proxies
