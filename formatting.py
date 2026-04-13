@@ -1,5 +1,7 @@
 """Форматирование названий конфигов и утилиты."""
 
+from ip_country import get_flag_for_config
+
 
 def _url_key(url: str) -> str:
     """Ключ для дедупликации — URL без фрагмента (#названия)."""
@@ -47,6 +49,9 @@ def format_config_name(url: str, index: int, config_type: str = "Base VPN", ping
     # Одиночный эмодзи
     elif fragment and _is_emoji(fragment[0]):
         emoji = fragment[0]
+    # Если эмодзи нет во фрагменте — пытаемся получить флаг страны по IP
+    elif not emoji:
+        emoji = get_flag_for_config(url)
 
     # Формируем название с номером
     # Определяем "Обход" по названию задачи или типу

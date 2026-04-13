@@ -8,6 +8,7 @@ import pytest
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 from formatting import format_config_name, _is_emoji, _is_regional_indicator, _url_key
+from ip_country import _code_to_flag, extract_ip_from_config_line, _is_ip
 
 
 class TestIsEmoji:
@@ -115,3 +116,72 @@ class TestUrlKey:
         url1 = "vless://uuid@host:443?security=none#Server 1"
         url2 = "vless://uuid@host:443?security=none#Server 2"
         assert _url_key(url1) == _url_key(url2)
+
+
+class TestCodeToFlag:
+    def test_common_countries(self):
+        assert _code_to_flag("US") == "🇺🇸"
+        assert _code_to_flag("DE") == "🇩🇪"
+        assert _code_to_flag("RU") == "🇷🇺"
+        assert _code_to_flag("GB") == "🇬🇧"
+        assert _code_to_flag("JP") == "🇯🇵"
+        assert _code_to_flag("CN") == "🇨🇳"
+        assert _code_to_flag("FR") == "🇫🇷"
+
+    def test_invalid_codes(self):
+        assert _code_to_flag("") == ""
+        assert _code_to_flag("A") == ""
+        assert _code_to_flag("ABC") == ""
+
+
+class TestExtractIpFromConfig:
+    def test_vless_with_ip(self):
+        url = "vless://abc123@8.8.8.8:443?security=tls#Server"
+        assert extract_ip_from_config_line(url) == "8.8.8.8"
+
+    def test_vless_with_domain(self):
+        url = "vless://abc123@example.com:443?security=tls#Server"
+        assert extract_ip_from_config_line(url) == ""
+
+    def test_trojan_with_ip(self):
+        url = "trojan://pass@1.1.1.1:443?security=tls#Server"
+        assert extract_ip_from_config_line(url) == "1.1.1.1"
+
+    def test_vmess_with_ip(self):
+        import base64
+        import json
+        vmess_json = json.dumps({
+            "add": "8.8.4.4",
+            "port": "443",
+            "id": "abc123",
+            "aid": "0",
+            "net": "tcp",
+            "type": "none",
+            "host": "",
+            "path": "",
+            "tls": "tls"
+        })
+        vmess_b64 = base64.b64encode(vmess_json.encode()).decode()
+        url = f"vmess://{vmess_b64}"
+        assert extract_ip_from_config_line(url) == "8.8.4.4"
+
+    def test_empty_input(self):
+        assert extract_ip_from_config_line("") == ""
+        assert extract_ip_from_config_line(None) == ""
+
+
+class TestIsIp:
+    def test_valid_ipv4(self):
+        assert _is_ip("8.8.8.8") is True
+        assert _is_ip("192.168.1.1") is True
+        assert _is_ip("1.1.1.1") is True
+
+    def test_valid_ipv6(self):
+        assert _is_ip("::1") is True
+        assert _is_ip("2001:db8::1") is True
+
+    def test_not_ip(self):
+        assert _is_ip("example.com") is False
+        assert _is_ip("not-an-ip") is False
+        assert _is_ip("") is False
+        assert _is_ip(None) is False
