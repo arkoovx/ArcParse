@@ -49,8 +49,8 @@ fi
 # 4. Установка зависимостей
 if [ -f "requirements.txt" ]; then
     echo -e "${YELLOW}→${NC} Устанавливаю зависимости..."
-    "$PIP_BIN" install --upgrade pip -q 2>/dev/null || true
-    "$PIP_BIN" install -r requirements.txt -q 2>/dev/null || true
+    "$PIP_BIN" install --upgrade pip
+    "$PIP_BIN" install -r requirements.txt
     echo -e "${GREEN}✓${NC} Зависимости готовы"
 fi
 
